@@ -1,0 +1,16 @@
+name: bias_analysis
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - xarray
+  - numpy
+  - pandas
+  - netCDF4
+  - dask
+  - pytest  # for unit testing
+  - matplotlib
+  - pyyaml
+  - h5py
+  - netcdf4
+  - scipy

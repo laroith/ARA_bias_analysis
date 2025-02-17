@@ -1,0 +1,39 @@
+# .gitignore
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore Python bytecode
+__pycache__/
+*.py[cod]
+
+# Ignore virtual environments
+.env/
+venv/
+
+# Ignore log files
+logs/
+*.log
+
+debug.log
+
+# Ignore output files and temporary data
+output/
+data/*.nc
+
+# Ignore Jupyter Notebook checkpoints
+notebooks/.ipynb_checkpoints/
+
+# Ignore environment and dependency files
+*.env
+environment.yml.lock
+
+# Ignore compiled files
+*.so
+*.o
+*.a
+
+# Ignore any other temporary or unwanted files
+*.bak
+*.swp
