@@ -11,6 +11,17 @@ This package provides tools for analyzing and validating high-resolution climate
 - Temporal statistics
 - Command-line execution support
 
+## Project Structure
+
+- **cli.py**  
+  Main entry point, using `argparse` for command-line options. Pulls in configuration from a YAML file plus CLI overrides, then calls `run_analysis`.
+- **scripts/**  
+  Contains modular Python scripts for subsetting, regridding, loading data, computing metrics, etc.
+- **tests/**  
+  Pytest-based tests verifying the loading, subsetting, filtering, and bias calculations.  
+  - `test_cli_ens_selection.py` verifies ensemble member selection.  
+  - `test_cli_weathertypes.py` verifies weather-type filtering.
+
 ## Installation
 ```sh
 pip install .
@@ -19,20 +30,21 @@ pip install .
 ## Command-Line Usage
 Run a complete analysis using a configuration file:
 ```sh
-python cli.py --config config.yml
+python cli.py --config config.yaml
 ```
 
 ## Example Analysis Workflow
 A typical analysis involves:
 1. **Loading ensemble and reference datasets**
 2. **Subsetting by space and time**
-3. **Regridding ensemble data to match reference grid**
-4. **Computing daily precipitation sums**
-5. **Calculating bias metrics (e.g., RMSE)**
-6. **Saving outputs (NetCDF, plots, statistics)**
+3. **Filtering by Weather Type using a CSV file that defines weather types for each date. This feature now supports automatically filtering both ensemble and reference datasets via the CLI (`--weather-type-file`, `--include-weather-types 1 2 3`, etc.).**
+4. **Regridding ensemble data to match reference grid**
+5. **Computing daily, monthly, seasonal, ... precipitation sums/means**
+6. **Calculating bias metrics (e.g., RMSE)**
+7. **Saving outputs (NetCDF, plots, statistics)**
 
 ## Configuration File
-Users define parameters in a `config.yml` file:
+Users define parameters in a `config.yaml` file:
 ```yaml
 input:
   ensemble_pattern: "../data/total_precipitation_2017*.nc"

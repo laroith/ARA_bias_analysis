@@ -53,6 +53,11 @@ def parse_args():
     parser.add_argument("--bias-metrics", type=str, nargs='*', choices=["RMSE", "MAE", "ME"],
                         help="Which bias metrics to compute.")
 
+    parser.add_argument("--weather-type-file", type=str,
+                        help="Path to a CSV containing weather types (with columns date, slwt, etc.).")
+    parser.add_argument("--include-weather-types", type=int, nargs='*',
+                        help="List of integer weather types to include (e.g. 6 7).")
+
     return parser.parse_args()
 
 
@@ -130,6 +135,19 @@ def run_analysis(config):
                                     dim_lat=config['input'].get('ref_lat_dim', 'y'),
                                     dim_lon=config['input'].get('ref_lon_dim', 'x'))
 
+    # weather type filtering
+    weather_config = config.get('weather_types', {})
+    if 'file' in weather_config and 'include' in weather_config and weather_config['include']:
+        from scripts.weather_filter import load_weather_types_csv, filter_by_weather_types
+        print(f"Filtering datasets by weather types: {weather_config['include']}")
+        # For example, if your CSV has columns date, slwt
+        wt_da = load_weather_types_csv(csv_path=weather_config['file'],
+                                       date_col='date',
+                                       wt_col='slwt')
+        ds_ensemble = filter_by_weather_types(ds_ensemble, wt_da, include_types=weather_config['include']) 
+        print("Ensemble dataset after weather type filtering:\n", ds_ensemble)
+        ds_ref_prepared = filter_by_weather_types(ds_ref_prepared, wt_da, include_types=weather_config['include']) 
+        print("Reference dataset after weather type filtering:\n", ds_ref_prepared)
 
     # Regrid ensemble to match reference
     print("Regridding ensemble to match reference grid...")
@@ -164,32 +182,29 @@ def run_analysis(config):
         aggregated_ens = ds_ensemble_interp[var_name]
 
     print(f"Aggregation complete. Resulting data dims: {aggregated_ens.dims}")
+    print(aggregated_ens)
 
     # Next: we load reference, which may or may not be aggregated similarly:
     ref_var_name = config['input'].get('ref_var_name', 'RR')
     aggregated_ref = None
 
     if aggregation_method == "daily":
-        aggregated_ref = aggregate_to_daily(ds_ref, ref_var_name,
+        aggregated_ref = aggregate_to_daily(ds_ref_prepared, ref_var_name,
                                             missing_value=missing_value)
     elif aggregation_method == "monthly":
-        aggregated_ref = aggregate_by_month(ds_ref, ref_var_name,
+        aggregated_ref = aggregate_by_month(ds_ref_prepared, ref_var_name,
                                             missing_value=missing_value)
     elif aggregation_method == "seasonal":
-        aggregated_ref = aggregate_by_season(ds_ref, ref_var_name,
+        aggregated_ref = aggregate_by_season(ds_ref_prepared, ref_var_name,
                                              missing_value=missing_value)
     elif aggregation_method == "yearly":
-        aggregated_ref = aggregate_by_year(ds_ref, ref_var_name,
+        aggregated_ref = aggregate_by_year(ds_ref_prepared, ref_var_name,
                                            missing_value=missing_value)
-    elif aggregation_method == "weathertype":
-        # Pass a weather_type_array from the config or elsewhere
-        weather_type_array = ds_ref['weather_type']  # just as an example
-        aggregated_ens = group_by_weather_type(ds_ensemble_interp, var_name, weather_type_array)
     else:
-        aggregated_ref = ds_ref[ref_var_name]
+        aggregated_ref = ds_ref_prepared[ref_var_name]
 
     print(f"Reference data also aggregated with dims: {aggregated_ref.dims}")
-
+    print(aggregated_ref)
 
     bias_config = config.get('bias', {})
     requested_metrics = bias_config.get('metrics', ["RMSE"])  # default to RMSE
@@ -295,6 +310,17 @@ def main():
         config['bias']['dimensions'] = args.bias_dim
     if args.bias_metrics:
         config['bias']['metrics'] = args.bias_metrics
+
+    if args.weather_type_file:
+        # Create or update a 'weather_types' subsection in config
+        if 'weather_types' not in config:
+            config['weather_types'] = {}
+        config['weather_types']['file'] = args.weather_type_file
+
+    if args.include_weather_types:
+        if 'weather_types' not in config:
+            config['weather_types'] = {}
+        config['weather_types']['include'] = args.include_weather_types
 
     # Now run analysis once, with updated config
     run_analysis(config)
