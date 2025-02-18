@@ -1,0 +1,55 @@
+# tests/test_config.yaml
+
+input:
+  # Pattern to find your ensemble member files
+  ensemble_pattern: "data/total_precipitation_*.nc"
+  
+  # Single reference dataset (change path as needed)
+  reference_file: "data/SPARTACUS2-DAILY_RR_2017.nc"
+  
+  # Variable names for ensemble & reference
+  # (These should match your test NetCDF files)
+  var_name: "precipitation"
+  ref_var_name: "RR"
+  
+  # Names for the latitude/longitude in the ensemble dataset
+  lat_name: "latitude"
+  lon_name: "longitude"
+  
+  # Names for the latitude/longitude in the reference dataset
+  ref_lat_name: "lat"
+  ref_lon_name: "lon"
+  
+  # Optional missing_value override (uncomment if needed)
+  # missing_value: -999
+
+subset:
+  # Geographic subsetting
+  lat_bounds: [47, 48]
+  lon_bounds: [12, 13]
+  
+  # Time subsetting (change to match your test data coverage)
+  start_time: "2017-10-01T00:00:00"
+  end_time: "2017-10-02T00:00:00"
+
+ensemble:
+  # Specify no particular members by default; let CLI override if needed
+  members: ['00','09']
+  # Default to not compute ensemble mean (CLI can override)
+  mean: false
+
+aggregation:
+  # Default is daily aggregation; can be overridden via CLI
+  period: "daily"
+
+bias:
+  # Default is just RMSE (user can override via CLI for MAE, ME, etc.)
+  metrics: ["RMSE"]
+  # Average over time to get a "map"
+  dimensions: ["time"]
+
+output:
+  # Where to save results (NetCDF & plot)
+  # Make sure this folder exists or is created by your script/tests
+  save_netcdf: "output/rmse_test_spartacus.nc"
+  save_plot: "output/rmse_plot_test_spartacus.png"
