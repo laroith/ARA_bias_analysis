@@ -22,6 +22,12 @@ from scripts.temporal_stats import (
 from scripts.bias_metrics import (
     root_mean_squared_error, mean_absolute_error, mean_error
 )
+from scripts.elevation_manager import (
+    load_and_subset_dem,
+    add_alt_to_ds,
+    bin_by_altitude
+)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run climate analysis")
@@ -83,12 +89,14 @@ def run_analysis(config):
     ds_ensemble = subset_time(ds_ensemble,
                               config['subset']['start_time'],
                               config['subset']['end_time'])
-    print(ds_ensemble)
+
+#    print("Subsetted ensemble dataset:", ds_ensemble)
 
     ds_ensemble = prepare_ensemble_grid(ds_ensemble,
                                         lat_var=config['input'].get('lat_name', 'latitude'),
                                         lon_var=config['input'].get('lon_name', 'longitude'))
-    print(f"Ensemble dataset loaded with dimensions: {ds_ensemble.dims}")
+
+#    print(f"Ensemble dataset loaded with dimensions: {ds_ensemble.dims}")
 
     var_name = config['input'].get('var_name', 'precipitation')
 
@@ -97,8 +105,8 @@ def run_analysis(config):
               f"Available variables: {list(ds_ensemble.data_vars)}")
 
     lat_name = config['input'].get('lat_name', 'latitude')
-    if lat_name not in ds_ensemble.coords and lat_name not in ds_ensemble.data_vars:
-        print(f"Warning: '{lat_name}' not found. Default might be invalid.")
+#    if lat_name not in ds_ensemble.coords and lat_name not in ds_ensemble.data_vars:
+#        print(f"Warning: '{lat_name}' not found. Default might be invalid.")
 
 
     # Handle ensemble-member selection
@@ -108,12 +116,12 @@ def run_analysis(config):
     if member_list:
         print(f"Selecting ensemble members: {member_list}")
         ds_ensemble = ds_ensemble.sel(member=member_list)
-        print(ds_ensemble)
+#        print(ds_ensemble)
 
     if use_mean:
         print("Computing ensemble mean across selected members...")
         ds_ensemble = ds_ensemble.mean(dim='member', keep_attrs=True)
-        print(ds_ensemble)
+#        print(ds_ensemble)
 
     # Load reference
     print("Loading reference dataset...")
@@ -127,13 +135,51 @@ def run_analysis(config):
     ds_ref_temp = subset_time(ds_ref_sub,
                          config['subset']['start_time'],
                          config['subset']['end_time'])
-    print(f"Reference dataset loaded with dimensions: {ds_ref.dims}")
+#    print(f"Reference dataset loaded with dimensions: {ds_ref.dims}")
 
     ds_ref_prepared = prepare_reference_grid(ds_ref_temp,
                                     lat_var=config['input'].get('ref_lat_name', 'lat'),
                                     lon_var=config['input'].get('ref_lon_name', 'lon'),
                                     dim_lat=config['input'].get('ref_lat_dim', 'y'),
                                     dim_lon=config['input'].get('ref_lon_dim', 'x'))
+
+    print("Reference dataset after subsetting:", ds_ref_prepared)
+
+    # If the user has 'dem' block in config and enabled it, we load the DEM
+    dem_config = config.get('dem', {})
+    dem_enabled = dem_config.get('enabled', False)
+    
+    if dem_enabled:
+        print("DEM support is enabled. Loading DEM dataset...")
+        dem_path = dem_config['dem_path']
+        dem_var = dem_config.get('dem_var', 'ZH')
+        
+        # e.g. from config: lat_var='lat', lon_var='lon', dim_lat='y', dim_lon='x'
+        lat_var = dem_config.get('lat_var', 'lat')
+        lon_var = dem_config.get('lon_var', 'lon')
+        dim_lat = dem_config.get('dim_lat', 'y')
+        dim_lon = dem_config.get('dim_lon', 'x')
+        
+        # Bins could also be in dem_config. We'll handle them later for binning:
+        alt_bins = dem_config.get('bins', [0, 500, 1000, 1500, 2000, 3000])
+        
+        # Load DEM
+        ds_dem = load_and_subset_dem(
+            dem_path,
+            dem_var=dem_var,
+            lat_bounds=config['subset']['lat_bounds'],
+            lon_bounds=config['subset']['lon_bounds'],
+            lat_var=lat_var,
+            lon_var=lon_var,
+            dim_lat=dim_lat,
+            dim_lon=dim_lon
+        )
+
+    else:
+        ds_dem = None
+        alt_bins = []
+    ### END NEW DEM LOADING
+    print("Altitude dataset:", ds_dem)
 
     # weather type filtering
     weather_config = config.get('weather_types', {})
@@ -153,7 +199,25 @@ def run_analysis(config):
     print("Regridding ensemble to match reference grid...")
     ds_ensemble_interp = regrid_to_target(ds_ensemble, ds_ref_prepared)
     print("Regridding complete.")
-    print(ds_ensemble_interp)
+    print(ds_ensemble_interp.time.values)
+    print("Ensemble data after regridding:", ds_ensemble_interp)
+
+    # Attach altitude to the datasets
+    if ds_dem is not None:
+        # if user wants to regrid DEM to reference
+        if dem_config.get('regrid_to_reference', False):
+            print("Regridding DEM to reference grid before attaching altitude...")
+            ds_dem = regrid_to_target(ds_dem, ds_ref_prepared)
+        
+        # Now attach altitude to ensemble
+        ds_ensemble_interp = add_alt_to_ds(ds_ensemble_interp, ds_dem)
+        
+        # Also attach altitude to reference
+        ds_ref_prepared = add_alt_to_ds(ds_ref_prepared, ds_dem)
+        
+        print("Altitude successfully attached to ensemble & reference datasets.")
+
+    print("Ensemble data with altitude:", ds_ensemble_interp)
 
     # Next steps (aggregation, bias metrics, etc.) will be shown in the following sections.
     # Decide the variable name and missing_value from config
@@ -162,8 +226,9 @@ def run_analysis(config):
 
     aggregation_method = config['aggregation'].get('period', 'daily')  
     # possible values: "daily", "monthly", "seasonal", "yearly", "none" (or direct)
-
     print(f"Performing {aggregation_method} aggregation on ensemble data...")
+
+    aggregated_ens = None
 
     if aggregation_method == "daily":
         aggregated_ens = aggregate_to_daily(ds_ensemble_interp, var_name,
@@ -206,46 +271,172 @@ def run_analysis(config):
     print(f"Reference data also aggregated with dims: {aggregated_ref.dims}")
     print(aggregated_ref)
 
+    ### NEW: BIN BY ALTITUDE (IF ENABLED)
+    altbin_config = config.get('altitude_binning', {})
+    bins_enabled = altbin_config.get('enabled', False) and ds_dem is not None
+    bin_results = {}  # We'll store the bin-based metrics here
+
+    if bins_enabled:
+        print("Altitude binning is enabled. Binning the aggregated data.")
+        user_bins = altbin_config.get('bins', [0, 500, 1000, 1500, 2000, 3000])
+    
+        # bin_by_altitude expects a Dataset with altitude, so ensure aggregated_ens and aggregated_ref
+        # are still Datasets, not DataArrays. If they are DataArrays, convert them to a Dataset or
+        # rework aggregator to always return a Dataset.
+
+        ens_binned_dict = bin_by_altitude(aggregated_ens, alt_var="altitude", bins=user_bins)
+        ref_binned_dict = bin_by_altitude(aggregated_ref, alt_var="altitude", bins=user_bins)
+
+        # Now each of these is a dict: {(min_bin, max_bin): subset_dataset}
+
+    print("Ensemble dataset with altitude bins:", ens_binned_dict)
+
     bias_config = config.get('bias', {})
     requested_metrics = bias_config.get('metrics', ["RMSE"])  # default to RMSE
     dims_to_average = bias_config.get('dimensions', None)     # e.g., ["time"]
 
     results = {}
 
-    if "RMSE" in requested_metrics:
-        print("Computing RMSE...")
-        rmse_vals = root_mean_squared_error(aggregated_ens, aggregated_ref,
-                                            dim=dims_to_average)
-        results["RMSE"] = rmse_vals
+    # domain-wide
+    for metric in requested_metrics:
+        if metric == "RMSE":
+            rmse_vals = root_mean_squared_error(aggregated_ens[var_name],
+                                                aggregated_ref[ref_var_name],
+                                                dim=dims_to_average)
+            results["RMSE"] = rmse_vals
+        elif metric == "MAE":
+            mae_vals = mean_absolute_error(aggregated_ens[var_name],
+                                           aggregated_ref[ref_var_name],
+                                           dim=dims_to_average)
+            results["MAE"] = mae_vals
+        elif metric == "ME":
+            me_vals = mean_error(aggregated_ens[var_name],
+                                 aggregated_ref[ref_var_name],
+                                 dim=dims_to_average)
+            results["ME"] = me_vals
 
-    if "MAE" in requested_metrics:
-        print("Computing MAE...")
-        mae_vals = mean_absolute_error(aggregated_ens, aggregated_ref,
-                                       dim=dims_to_average)
-        results["MAE"] = mae_vals
+    ### NEW BIN LOGIC ###
+    if bins_enabled:
+        print("Computing bias metrics in each altitude bin.")
+        # e.g. results_bins = { (min_bin, max_bin): { "RMSE": <da>, "MAE": <da> } }
+        results_bins = {}
+        for bin_range, ds_ens_bin in ens_binned_dict.items():
+            ds_ref_bin = ref_binned_dict[bin_range]
+            # create an inner dict for metrics in this bin
+            bin_metrics = {}
+        
+            # each subset is still a dataset with "altitude", plus [time, lat_coord, lon_coord,...]
+            for metric in requested_metrics:
+                if metric == "RMSE":
+                    rmse_da = root_mean_squared_error(
+                        ds_ens_bin[var_name],
+                        ds_ref_bin[ref_var_name],
+                        dim=dims_to_average
+                    )
+                    bin_metrics["RMSE"] = rmse_da
+                elif metric == "MAE":
+                    mae_da = mean_absolute_error(
+                        ds_ens_bin[var_name],
+                        ds_ref_bin[ref_var_name],
+                        dim=dims_to_average
+                    )
+                    bin_metrics["MAE"] = mae_da
+                elif metric == "ME":
+                    me_da = mean_error(
+                        ds_ens_bin[var_name],
+                        ds_ref_bin[ref_var_name],
+                        dim=dims_to_average
+                    )
+                    bin_metrics["ME"] = me_da
+        
+            results_bins[bin_range] = bin_metrics
 
-    if "ME" in requested_metrics:
-        print("Computing Mean Error (ME)...")
-        me_vals = mean_error(aggregated_ens, aggregated_ref,
-                             dim=dims_to_average)
-        results["ME"] = me_vals
+        # store the bin-based results in 'results' or a separate top-level var
+        results["altitude_bins"] = results_bins
 
     print("Bias metric calculations complete.")
 
     # You can save or plot them as needed:
     if 'save_netcdf' in config['output']:
-        # Example: if only RMSE is selected, results["RMSE"] is an xarray.DataArray
-        # If multiple metrics were selected, you may want to combine them into a single Dataset
-        combined = xr.Dataset(results)
+        combined = xr.Dataset()
+        # domain-wide metrics:
+        for k,v in results.items():
+            if k == "altitude_bins":
+                # skip or handle separately
+                continue
+            combined[k] = v
+        # you may want to convert bin-based metrics to a single dataset if they are all the same shape
+        # or else you store them separately
         combined.to_netcdf(config['output']['save_netcdf'])
 
-    if 'save_plot' in config['output']:
+    if 'save_plot' in config['output'] and config['output']['save_plot']:
+        # This means we do some plotting.
+        # Next, check if we want to plot altitude bins:
+        plot_bin_config = config['output'].get('plot_altitude_bins', {})
+        if plot_bin_config.get('enabled', False):
+            print("Plotting altitude-bin-based metrics...")
+
+            metric_to_plot = plot_bin_config.get('metric', 'RMSE')
+            bins_to_plot = plot_bin_config.get('bins_to_plot', [])
+            filename_pattern = plot_bin_config.get('filename_pattern', "bin_{min}_{max}.png")
+
+            # We assume results["altitude_bins"] exists from earlier:
+            if "altitude_bins" not in results:
+                print("No altitude bin metrics found in 'results'. Skipping bin plotting.")
+            else:
+                # Let's loop over the user-specified bin ranges
+                for bin_range in bins_to_plot:
+                    bin_range_tuple = tuple(bin_range)  # e.g., [0, 500] -> (0, 500)
+                    if bin_range_tuple not in results["altitude_bins"]:
+                        print(f"No data for bin range {bin_range_tuple}. Skipping.")
+                        continue
+                    bin_metrics_dict = results["altitude_bins"][bin_range_tuple]
+
+                    if metric_to_plot not in bin_metrics_dict:
+                        print(f"Metric '{metric_to_plot}' not found in bin {bin_range_tuple}. Skipping.")
+                        continue
+
+                    da_metric = bin_metrics_dict[metric_to_plot]
+                    if da_metric is None:
+                        print(f"No metric data for bin {bin_range_tuple}, metric={metric_to_plot}.")
+                        continue
+
+                    # Now do the actual plotting
+                    import matplotlib.pyplot as plt
+                    plt.figure(figsize=(6, 4))
+                    da_metric.plot(cmap="viridis")
+                    plt.title(f"{metric_to_plot} for altitude bin {bin_range_tuple}")
+                
+                    out_fname = filename_pattern.format(
+                        min=bin_range_tuple[0],
+                        max=bin_range_tuple[1]
+                    )
+                    plt.savefig(out_fname, dpi=150)
+                    plt.close()
+                    print(f"Saved plot '{out_fname}' for bin {bin_range_tuple}")
+        else:
+            # Optionally do domain-wide plotting (like your old logic):
+            if len(results) > 0:
+                # For example, pick the first top-level metric to plot
+                top_metrics = [k for k in results.keys() if k != "altitude_bins"]
+                if len(top_metrics) > 0:
+                    metric_to_plot = top_metrics[0]
+                    da_metric = results[metric_to_plot]
+                    if hasattr(da_metric, "plot"):
+                        print(f"Plotting top-level metric: {metric_to_plot}")
+                        da_metric.plot()
+                        import matplotlib.pyplot as plt
+                        plt.savefig("output/domain_wide_metric.png")
+                        plt.close()
+
+
+#    if 'save_plot' in config['output']:
         # As an example, plot the first computed metric:
-        metric_to_plot = list(results.keys())[0]
-        print(f"Plotting metric: {metric_to_plot}")
-        results[metric_to_plot].plot()
-        import matplotlib.pyplot as plt
-        plt.savefig(config['output']['save_plot'])
+#        metric_to_plot = list(results.keys())[0]
+#        print(f"Plotting metric: {metric_to_plot}")
+#        results[metric_to_plot].plot()
+#        import matplotlib.pyplot as plt
+#        plt.savefig(config['output']['save_plot'])
 
 def main():
     args = parse_args()
@@ -267,7 +458,7 @@ def main():
                 'lat_bounds': [46, 48],
                 'lon_bounds': [11, 13],
                 'start_time': '2017-10-01T00:00:00',
-                'end_time':   '2017-10-02T23:00:00'
+                'end_time':   '2017-10-02T12:00:00'
             },
             'ensemble': {
                 'members': None,

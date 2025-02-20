@@ -29,32 +29,52 @@ def fix_missing_values(da, missing_value=-999):
 
 def aggregate_to_daily(ds, var_name, method="sum", missing_value=None, compute_ens_mean=False):
     """
-    Aggregate hourly data to daily resolution.
+    Aggregate (presumably) hourly data to daily resolution and return a Dataset.
     
-    Args:
-        ds (xarray.Dataset): Input dataset with a time coordinate.
-        var_name (str): Variable name to aggregate (e.g., 'precipitation' or 'RR').
-        method (str, optional): Aggregation method: "sum" or "mean". Default is "sum".
-        missing_value (numeric, optional): If provided, fix missing values before aggregation.
-        
-    Returns:
-        xarray.DataArray: Daily aggregated data.
+    Returns
+    -------
+    xarray.Dataset
+        A new dataset containing the daily-aggregated var_name and
+        any other non-time-dependent variables (e.g. altitude).
+        The daily time dimension replaces the original hourly time in var_name.
     """
+    if var_name not in ds:
+        raise ValueError(f"Variable '{var_name}' not found in dataset.")
+
     da = ds[var_name]
+    # Optionally handle missing
     if missing_value is not None:
         da = fix_missing_values(da, missing_value)
-    
+
     if compute_ens_mean and "member" in da.dims:
         da = da.mean(dim="member")
 
+    # Perform daily aggregation
     if method == "sum":
         da_daily = da.resample(time="1D").sum()
     elif method == "mean":
         da_daily = da.resample(time="1D").mean()
     else:
         raise ValueError("Unsupported aggregation method. Choose 'sum' or 'mean'.")
-    
-    return da_daily
+
+    # --- (1) Build a new Dataset with the daily-aggregated variable
+    ds_out = da_daily.to_dataset(name=var_name)
+
+    # --- (2) Reattach any other variables that do NOT depend on time.
+    # For example, altitude might be [lat_coord, lon_coord] with no time dimension.
+    for var in ds.data_vars:
+        # if var == var_name, we already included it in ds_out
+        if var == var_name:
+            continue
+
+        # Only attach if it doesn't have the 'time' dimension
+        dims_var = ds[var].dims
+        if "time" not in dims_var:
+            ds_out[var] = ds[var]
+
+    return ds_out
+
+
 
 def aggregate_by_month(ds, var_name, method="sum", missing_value=None, compute_ens_mean=False):
     """
@@ -69,6 +89,9 @@ def aggregate_by_month(ds, var_name, method="sum", missing_value=None, compute_e
     Returns:
         xarray.DataArray: Monthly aggregated data.
     """
+    if var_name not in ds:
+        raise ValueError(f"Variable '{var_name}' not found in dataset.")
+
     da = ds[var_name]
     if missing_value is not None:
         da = fix_missing_values(da, missing_value)
@@ -83,7 +106,18 @@ def aggregate_by_month(ds, var_name, method="sum", missing_value=None, compute_e
     else:
         raise ValueError("Unsupported aggregation method. Choose 'sum' or 'mean'.")
     
-    return da_monthly
+    ds_out = da_monthly.to_dataset(name=var_name)
+
+    for var in ds.data_vars:
+        if var == var_name:
+            continue
+
+        dims_var = ds[var].dims
+        if "time" not in dims_var:
+            ds_out[var] = ds[var]
+
+    return ds_out
+
 
 def aggregate_by_season(ds, var_name, method="sum", missing_value=None, compute_ens_mean=False):
     """
@@ -100,6 +134,9 @@ def aggregate_by_season(ds, var_name, method="sum", missing_value=None, compute_
     Returns:
         xarray.DataArray: Seasonal aggregated data.
     """
+    if var_name not in ds:
+        raise ValueError(f"Variable '{var_name}' not found in dataset.")
+
     da = ds[var_name]
     if missing_value is not None:
         da = fix_missing_values(da, missing_value)
@@ -115,7 +152,18 @@ def aggregate_by_season(ds, var_name, method="sum", missing_value=None, compute_
     else:
         raise ValueError("Unsupported aggregation method. Choose 'sum' or 'mean'.")
     
-    return da_season
+    ds_out = da_season.to_dataset(name=var_name)
+
+    for var in ds.data_vars:
+        if var == var_name:
+            continue
+
+        dims_var = ds[var].dims
+        if "time" not in dims_var:
+            ds_out[var] = ds[var]
+
+    return ds_out
+ 
 
 def aggregate_by_year(ds, var_name, method="sum", missing_value=None, compute_ens_mean=False):
     """
@@ -144,7 +192,18 @@ def aggregate_by_year(ds, var_name, method="sum", missing_value=None, compute_en
     else:
         raise ValueError("Unsupported aggregation method. Choose 'sum' or 'mean'.")
     
-    return da_annual
+    ds_out = da_annual.to_dataset(name=var_name)
+
+    for var in ds.data_vars:
+        if var == var_name:
+            continue
+
+        dims_var = ds[var].dims
+        if "time" not in dims_var:
+            ds_out[var] = ds[var]
+
+    return ds_out
+
 
 def group_by_weather_type(ds, var_name, weather_type_array, compute_ens_mean=False):
     """

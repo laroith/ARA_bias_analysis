@@ -7,9 +7,12 @@ This package provides tools for analyzing and validating high-resolution climate
 - Data loading from NetCDF files
 - Preprocessing and aggregation
 - Regridding and subsetting
+- Optional DEM (digital elevation model) for altitude-based subsetting and binning
 - Bias metric calculations
-- Temporal statistics
-- Command-line execution support
+- Temporal aggregation (daily, monthly, yearly, seasonally)
+- Weather type filtering (optional),
+- Configurable CLI interface to orchestrate all steps.
+
 
 ## Project Structure
 
@@ -30,18 +33,22 @@ pip install .
 ## Command-Line Usage
 Run a complete analysis using a configuration file:
 ```sh
-python cli.py --config config.yaml
+python cli/cli.py --config configs/config.yaml
 ```
 
 ## Example Analysis Workflow
 A typical analysis involves:
 1. **Loading ensemble and reference datasets**
 2. **Subsetting by space and time**
-3. **Filtering by Weather Type using a CSV file that defines weather types for each date. This feature now supports automatically filtering both ensemble and reference datasets via the CLI (`--weather-type-file`, `--include-weather-types 1 2 3`, etc.).**
-4. **Regridding ensemble data to match reference grid**
-5. **Computing daily, monthly, seasonal, ... precipitation sums/means**
-6. **Calculating bias metrics (e.g., RMSE)**
-7. **Saving outputs (NetCDF, plots, statistics)**
+3.  **Altitude Binning**  
+   - We introduced a DEM-based workflow that attaches an `"altitude"` variable to both ensemble and reference data.  
+   - **bin_by_altitude** function creates subsets of the data for user-defined altitude ranges.  
+   - We can compute bias metrics (RMSE, MAE, ME) **per altitude bin** to study error dependence on terrain height.
+4. **Filtering by Weather Type using a CSV file that defines weather types for each date. This feature now supports automatically filtering both ensemble and reference datasets via the CLI (`--weather-type-file`, `--include-weather-types 1 2 3`, etc.).**
+5. **Regridding ensemble data to match reference grid**
+6. **Computing daily, monthly, seasonal, ... precipitation sums/means**
+7. **Calculating bias metrics (e.g., RMSE)**
+8. **Saving outputs (NetCDF, plots, statistics)**
 
 ## Configuration File
 Users define parameters in a `config.yaml` file:
@@ -69,6 +76,7 @@ output:
 - netCDF4
 - h5py
 - pyyaml
+- pandas
 
 ## License
 MIT License
