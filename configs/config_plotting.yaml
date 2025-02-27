@@ -1,0 +1,166 @@
+# configs/config.yaml
+
+input:
+  # Pattern to find your ensemble member files
+  ensemble_pattern: "/data/reloclim/normal/ARA/data/total_precipitation_2017100*.nc"
+  
+  # Single reference dataset (change path as needed)
+  reference_file: "data/INCAL_HOURLY_RR_201710.nc"
+  
+  # Variable names for ensemble & reference
+  # (These should match your test NetCDF files)
+  var_name: "precipitation"
+  ref_var_name: "RR"
+  
+  # Names for the latitude/longitude in the ensemble dataset
+  lat_name: "latitude"
+  lon_name: "longitude"
+  
+  # Names for the latitude/longitude in the reference dataset
+  ref_lat_name: "lat"
+  ref_lon_name: "lon"
+  
+  # Optional missing_value override (uncomment if needed)
+  missing_value: -999
+
+subset:
+  # Geographic subsetting
+  lat_bounds: [45, 48]
+  lon_bounds: [11, 13]
+  
+  # Time subsetting (change to match your test data coverage)
+  start_time: "2017-10-01T00:00:00"
+  end_time: "2017-10-02T00:00:00"
+
+ensemble:
+  # Specify no particular members by default; let CLI override if needed
+  members: ['00','02','08','09']
+  # Default to not compute ensemble mean (CLI can override)
+  mean: true
+
+aggregation:
+  # Default is daily aggregation; can be overridden via CLI
+  period: "none"       # or "daily", "monthly", "seasonal"
+
+bias:
+  # Default is just RMSE (user can override via CLI for MAE, ME, etc.)
+  metrics: ["RMSE"]
+  dimensions: ["time"] #average over time to receive a lat lon map
+
+dem:
+  # Include altitude from INCA elevation map
+  enabled: true
+  dem_path: "data/INCA_DEM.nc"
+  dem_var: "ZH"
+  lat_var: "lat"
+  lon_var: "lon"
+  dim_lat: "y"
+  dim_lon: "x"
+  regrid_to_reference: true
+  bins: [0, 500, 1000, 1500, 2000, 3000]
+
+altitude_binning:
+  enabled: true
+  # If we want to override dem.bins:
+#  bins: [0, 500, 1000, 2000]
+
+#output:
+  # Where to save results (NetCDF & plot)
+  # Make sure this folder exists or is created by your script/tests
+#  save_netcdf: "output/rmse_test_plotting.nc"
+
+plot:
+  enabled: true
+
+  spatial_map:
+    enabled: false #ATTENTION!! if multiple members are loaded and ensemble mean is disabled, set this to false -> use member subplots instead
+    metric: "RMSE"
+    out_file: "output/spatial_rmse.png"
+    cmap: "coolwarm"
+    vmin: 0
+    vmax: 30
+
+  time_series:
+    enabled: false
+    out_file: "output/time_series_mem.png"
+    show_trend: true
+    title: "Hourly Precip Time Series"
+    ylabel: "mm/hour"
+    lines:
+      - source: "ensemble"
+        variable: "precipitation"
+        color: "blue"
+        label: "Ensemble member"
+        member_selection: "mean"        # "all" or "mean", or "00" or ["00","01"] for picking members
+        #reduce_dims: ["lat_coord", "lon_coord"]  # optional domain-mean
+        alt_bin_selection: ["(500.0, 1000.0]", "(1000.0, 1500.0]"]
+      - source: "reference"
+        variable: "RR"
+        #reduce_dims: ["lat_coord", "lon_coord"]
+        color: "red"
+        label: "Reference"
+        alt_bin_selection: ["(500.0, 1000.0]", "(1000.0, 1500.0]"]
+
+
+  cycle:
+    enabled: false
+    out_file: "output/cycle_mem.png"
+    type: "diurnal"  # "diurnal", "daily", "monthly", "seasonal", "annual"
+    title: "Daily Cycle Comparison"
+    ylabel: "mm"
+    lines:
+      - source: "ensemble"
+        variable: "precipitation"
+        member_selection: "mean"        #"all" or "mean", or ["00","01"] for picking members
+        #reduce_dims: ["lat_coord", "lon_coord"]  # Domain+ensemble mean
+        color: "blue"
+        label: "Ensemble Cycle"
+        alt_bin_selection: ["(500.0, 1000.0]","(1000.0, 1500.0]"]
+      - source: "reference"
+        variable: "RR"
+        #reduce_dims: ["lat_coord", "lon_coord"]  # Domain mean (no 'member' dimension)
+        color: "red"
+        label: "Reference"
+        alt_bin_selection: ["(500.0, 1000.0]","(1000.0, 1500.0]"]
+
+  distribution:
+    enabled: false
+    kind: "hist"     # or "kde", "box", etc., up to you
+    out_file: "output/distribution_bin.png"
+    bins: 30
+    title: "Distribution of Precip"
+    lines:
+      - source: "ensemble"
+        variable: "precipitation"
+        member_selection: "mean"        # "all" or "mean", or ["00","01"] for picking members
+        #reduce_dims: ["time"]  # Maybe we want to flatten across time+members
+        color: "green"
+        label: "Ens Mem"
+        alt_bin_selection: ["(500.0, 1000.0]","(1000.0, 1500.0]"]
+      - source: "reference"
+        variable: "RR"
+        #reduce_dims: ["time"]            # Flatten across time only
+        color: "red"
+        label: "Ref Flattened"
+        alt_bin_selection: ["(500.0, 1000.0]","(1000.0, 1500.0]"]
+
+  member_subplots:
+    enabled: false
+    # Example: If you had 'member' dimension in your ensemble, 
+    # and wanted to plot metric side by side.
+    metric: "RMSE"
+    out_file: "output/rmse_by_member.png"
+    title: "RMSE by Ensemble Member"
+    ncols: 4
+    cmap: "Blues"
+
+  altitude_bin_subplots:
+    enabled: true
+    metric: "RMSE"
+    out_file: "output/RMSE_by_altbin.png"
+    title: "RMSE by Altitude Bin"
+    ncols: 5       # how many columns in the subplot grid
+    cmap: "viridis"
+    vmin: 0
+    vmax: 30
+

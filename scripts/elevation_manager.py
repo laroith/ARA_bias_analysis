@@ -123,3 +123,20 @@ def add_alt_to_ds(ds, dem_ds):
     ds["altitude"] = dem_ds["altitude"]
     
     return ds
+
+
+def groupby_altitude_bins(ds, alt_var="altitude", bins=[0,500,1000,1500,2000,3000]):
+    """
+    Returns a new Dataset with a dimension 'alt_bin', created by grouping
+    along 'altitude' in the specified bins. Each group is identified by an interval label.
+    """
+    # groupby_bins yields something like a DataArray with an additional dim
+    ds_binned = ds.groupby_bins(alt_var, bins=bins, include_lowest=True).mean(dim=[]) #no mean at all when []
+    # This creates a new coordinate "altitude_bins" or whatever name is derived from groupby_bins
+    # Let's rename it for clarity:
+    # By default, it might call the dimension something like 'altitude_bins'
+    bin_dim_name = f"{alt_var}_bins"
+    if bin_dim_name in ds_binned.dims:
+        ds_binned = ds_binned.rename({bin_dim_name: "alt_bin"})
+        ds_binned["alt_bin"] = ds_binned["alt_bin"].astype(str)
+    return ds_binned
