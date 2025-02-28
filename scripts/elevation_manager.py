@@ -67,41 +67,6 @@ def load_and_subset_dem(
     return ds_dem_prepared
 
 
-def bin_by_altitude(ds, alt_var="altitude", bins=None):
-    """
-    Bin dataset grid cells by altitude ranges.
-
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        Input dataset containing a variable named alt_var.
-    alt_var : str, optional
-        Name of altitude variable (default "altitude").
-    bins : list of float, optional
-        E.g. [0, 500, 1000, 2000]. If None, a default list is used.
-
-    Returns
-    -------
-    dict
-        Keys are (min_bin, max_bin), values are subsets of ds in that bin.
-    """
-    if alt_var not in ds:
-        raise ValueError(f"Variable '{alt_var}' not found in dataset.")
-    
-    if bins is None:
-        bins = [0, 500, 1000, 1500, 2000, 3000]
-
-    bin_dict = {}
-    alt_da = ds[alt_var]
-    for i in range(len(bins) - 1):
-        min_b = bins[i]
-        max_b = bins[i + 1]
-        mask = (alt_da >= min_b) & (alt_da < max_b)
-        bin_ds = ds.where(mask, drop=True)
-        bin_dict[(min_b, max_b)] = bin_ds
-
-    return bin_dict
-
 
 def add_alt_to_ds(ds, dem_ds):
     """
@@ -125,18 +90,47 @@ def add_alt_to_ds(ds, dem_ds):
     return ds
 
 
-def groupby_altitude_bins(ds, alt_var="altitude", bins=[0,500,1000,1500,2000,3000]):
+def mask_altitude_bins(ds_or_da, alt_var="altitude", bins=[0, 500, 1000, 2000]):
     """
-    Returns a new Dataset with a dimension 'alt_bin', created by grouping
-    along 'altitude' in the specified bins. Each group is identified by an interval label.
+    Manually create a dictionary of masked DataArrays (or Datasets) 
+    for each altitude bin range. The shape remains (lat_coord, lon_coord[, time,...])
+    but cells not in the bin are set to NaN.
+
+    Parameters
+    ----------
+    ds_or_da : xarray.Dataset or xarray.DataArray
+        Must have 'altitude' as shape (lat_coord, lon_coord) (or broadcastable).
+    alt_var : str
+        Name of the altitude variable in ds_or_da.
+    bins : list of float
+        e.g. [0, 500, 1000, 2000, ...]
+
+    Returns
+    -------
+    bin_dict : dict
+        Keys are tuples (bin_min, bin_max), 
+        values are masked DataArrays (or Datasets) of the same shape, 
+        except out-of-bin cells are NaN.
     """
-    # groupby_bins yields something like a DataArray with an additional dim
-    ds_binned = ds.groupby_bins(alt_var, bins=bins, include_lowest=True).mean(dim=[]) #no mean at all when []
-    # This creates a new coordinate "altitude_bins" or whatever name is derived from groupby_bins
-    # Let's rename it for clarity:
-    # By default, it might call the dimension something like 'altitude_bins'
-    bin_dim_name = f"{alt_var}_bins"
-    if bin_dim_name in ds_binned.dims:
-        ds_binned = ds_binned.rename({bin_dim_name: "alt_bin"})
-        ds_binned["alt_bin"] = ds_binned["alt_bin"].astype(str)
-    return ds_binned
+    # Ensure altitude is a coordinate:
+    if alt_var not in ds_or_da.coords:
+        if alt_var in ds_or_da:
+            ds_or_da = ds_or_da.set_coords(alt_var)
+        else:
+            raise KeyError(f"'{alt_var}' not found in the provided data.")
+
+    bin_dict = {}
+    for i in range(len(bins) - 1):
+        min_b = bins[i]
+        max_b = bins[i+1]
+        # create a label or a tuple
+        bin_label = (min_b, max_b)
+
+        # create a mask for cells in [min_b, max_b)
+        mask = (ds_or_da[alt_var] >= min_b) & (ds_or_da[alt_var] < max_b)
+        
+        # apply the mask with .where(...) => out-of-bin cells become NaN
+        ds_bin = ds_or_da.where(mask, drop=False)  # keep shape, fill with NaN
+
+        bin_dict[bin_label] = ds_bin
+    return bin_dict

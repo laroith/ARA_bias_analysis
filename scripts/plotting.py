@@ -817,101 +817,79 @@ def plot_member_subplots(da,
 
 
 
-def plot_alt_bin_subplots(da,
-                          out_path,
-                          title=None,
-                          ncols=2,
-                          cmap='viridis',
-                          vmin=None,
-                          vmax=None,
-                          **kwargs):
+def plot_alt_bin_subplots_dict(bin_dict,
+                               metric="MAE",
+                               out_path="output/altbin_subplots.png",
+                               title=None,
+                               ncols=2,
+                               cmap='viridis',
+                               vmin=None,
+                               vmax=None,
+                               subplot_ax=None,
+                               **kwargs):
     """
-    Generate side-by-side subplots for each altitude bin (2D lat-lon maps).
-    Each bin's map is plotted in a separate subplot.
+    Subplots for each bin in bin_dict, each is a 2D map with shape (lat_coord, lon_coord).
+    bin_dict keys => (min_b, max_b),
+    bin_dict values => masked DataArray with lat/lon dims, 
+                       set to NaN outside the bin.
 
-    Parameters
-    ----------
-    da : xarray.DataArray
-        Data with dims ['lat_coord', 'lon_coord', 'alt_bin'] 
-        or at least an 'alt_bin' dimension.
-    out_path : str
-        Where to save the subplot figure (e.g. "output/spatial_me_by_bin.png").
-    title : str, optional
-        Overall figure title.
-    ncols : int, optional
-        Number of columns in the subplot grid (default 2).
-    cmap : str, optional
-        Colormap (e.g. "viridis").
-    vmin, vmax : float, optional
-        Color scale limits.
-    **kwargs : dict
-        Passed to the underlying xarray plot call (e.g. transform=ccrs.PlateCarree()).
+    We do effectively the same logic as your existing member_subplots, 
+    but the dimension is lat/lon, and each dictionary entry is one subplot.
     """
-
     import numpy as np
     import matplotlib.pyplot as plt
     import cartopy.crs as ccrs
     import cartopy.feature as cfeature
 
-    # 1) Check if alt_bin in dims
-    if 'alt_bin' not in da.dims:
-        raise ValueError("plot_alt_bin_subplots requires an 'alt_bin' dimension in the DataArray.")
-
-    # 2) Get the bin labels
-    bins = da.alt_bin.values
-    n_bins = len(bins)
-
-    # 3) Figure layout
+    sorted_bins = sorted(bin_dict.keys(), key=lambda x: x[0])  # sort by min_b
+    n_bins = len(sorted_bins)
+    ncols = min(ncols, n_bins)
     nrows = int(np.ceil(n_bins / ncols))
-    fig, axs = plt.subplots(nrows=nrows, ncols=ncols,
-                            figsize=(5 * ncols, 4 * nrows),
-                            subplot_kw={'projection': ccrs.PlateCarree()})
 
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols,
+                            figsize=(5*ncols, 4*nrows),
+                            subplot_kw={'projection': ccrs.PlateCarree()})
+    axs = np.array(axs).ravel()
+    
     if title:
         fig.suptitle(title, fontsize=16)
-
-    # Flatten axes if multi-row
-    axs = np.array(axs).ravel()
-
-    # 4) For each bin
-    for i, bin_val in enumerate(bins):
+    
+    for i, bin_range in enumerate(sorted_bins):
         ax = axs[i]
-        sub_da = da.sel(alt_bin=bin_val)
-
-        # If there's leftover dims besides lat/lon, e.g. time or member, you can do:
-        leftover_dims = [d for d in sub_da.dims if d not in ('lat_coord','lon_coord')]
+        sub_da = bin_dict[bin_range]  # shape: (lat_coord, lon_coord[, time])
+        # If there's leftover dims like 'time', you can average them out:
+        leftover_dims = [d for d in sub_da.dims if d not in ("lat_coord","lon_coord")]
         if leftover_dims:
             sub_da = sub_da.mean(dim=leftover_dims)
 
-        # Plot
         p = sub_da.plot(
             ax=ax,
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
-            add_colorbar=False,  
+            add_colorbar=False,
             **kwargs
         )
-
-        ax.set_title(f"Bin {bin_val}")
-        ax.coastlines('50m', color='black')
+        min_b, max_b = bin_range
+        ax.set_title(f"{metric} alt {min_b}-{max_b} m")
+        ax.coastlines(resolution='50m', color='black')
         ax.add_feature(cfeature.BORDERS, edgecolor='black')
         ax.add_feature(cfeature.LAKES, edgecolor='black', facecolor='none')
         ax.set_xlabel("Longitude")
         ax.set_ylabel("Latitude")
 
-    # 5) Hide any extra unused subplots
+    # hide leftover subplots if any
     for j in range(i+1, len(axs)):
         axs[j].set_visible(False)
 
-    # 6) Single colorbar for all subplots
     cb = fig.colorbar(p, ax=axs.tolist(), orientation='vertical', shrink=0.7)
-    cb.set_label(da.name or 'Value')
+    cb.set_label(metric)
 
-    plt.tight_layout(rect=[0,0,1,0.96])
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(out_path, dpi=150)
     plt.close()
-    print(f"[plot_alt_bin_subplots] Saved figure to {out_path}")
+    print(f"[plot_alt_bin_subplots_dict] Saved figure to {out_path}")
+
 
 
 

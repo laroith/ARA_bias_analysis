@@ -25,8 +25,7 @@ from scripts.bias_metrics import (
 from scripts.elevation_manager import (
     load_and_subset_dem,
     add_alt_to_ds,
-    bin_by_altitude,
-    groupby_altitude_bins
+    mask_altitude_bins
 )
 from scripts.plotting import (
     plot_spatial_map,
@@ -34,7 +33,7 @@ from scripts.plotting import (
     plot_cycle_multi,
     plot_distribution_multi,
     plot_member_subplots,
-    plot_alt_bin_subplots
+    plot_alt_bin_subplots_dict
 )
 
 def parse_args():
@@ -291,15 +290,7 @@ def run_analysis(config):
             aggregated_ref["altitude"] = ds_ref_prepared["altitude"]
             print("Aggregated Ref with altitude:", aggregated_ref)
 
-    altbin_config = config.get('altitude_binning', {})
-    if altbin_config.get('enabled', False):
-        # By default, let's do dimension-based binning, so we can handle alt_bin
-        user_bins = altbin_config.get('bins', [0, 500, 1000, 1500, 2000, 3000])
     
-        # Convert aggregated_ens (Dataset) into an alt_bin dimension
-        aggregated_ens = groupby_altitude_bins(aggregated_ens, alt_var="altitude", bins=user_bins)
-        aggregated_ref = groupby_altitude_bins(aggregated_ref, alt_var="altitude", bins=user_bins)
-
     # Bias Calculations
     bias_config = config.get('bias', {})
     requested_metrics = bias_config.get('metrics', ["RMSE"])  # default to RMSE
@@ -309,37 +300,53 @@ def run_analysis(config):
 
     for metric in requested_metrics:
         if metric == "RMSE":
-            rmse_vals = root_mean_squared_error(aggregated_ens,
-                                                aggregated_ref,
+            rmse_vals = root_mean_squared_error(aggregated_ens[var_name],
+                                                aggregated_ref[ref_var_name],
                                                 dim=dims_to_average)
-            results["RMSE"] = rmse_vals
+            if "altitude" in aggregated_ens:
+                rmse_vals = rmse_vals.assign_coords(altitude=aggregated_ens["altitude"])
+                results["RMSE"] = rmse_vals
+
         elif metric == "MAE":
-            mae_vals = mean_absolute_error(aggregated_ens,
-                                           aggregated_ref,
+            mae_vals = mean_absolute_error(aggregated_ens[var_name],
+                                           aggregated_ref[ref_var_name],
                                            dim=dims_to_average)
-            results["MAE"] = mae_vals
+            if "altitude" in aggregated_ens:
+                mae_vals = mae_vals.assign_coords(altitude=aggregated_ens["altitude"])
+                results["MAE"] = mae_vals
+
         elif metric == "ME":
-            me_vals = mean_error(aggregated_ens,
-                                 aggregated_ref,
+            me_vals = mean_error(aggregated_ens[var_name],
+                                 aggregated_ref[ref_var_name],
                                  dim=dims_to_average)
-            results["ME"] = me_vals
+            if "altitude" in aggregated_ens:
+                me_vals = me_vals.assign_coords(altitude=aggregated_ens["altitude"])
+                results["ME"] = me_vals
 
-    # (A) If altitude binning is enabled:
-    altbin_config = config.get('altitude_binning', {})
-    if altbin_config.get('enabled', False) and ds_dem is not None:
-        user_bins = altbin_config.get('bins', [0, 500, 1000, 1500, 2000, 3000])
-
-        for metric in requested_metrics:
-            da_metric = results[metric]
-            # e.g. results["ME"] might be shape (lat_coord, lon_coord)
-            # group it by altitude:
-            da_binned = groupby_altitude_bins(da_metric, alt_var="altitude", bins=user_bins)
-            # Now da_binned has dims: (alt_bin, lat_coord, lon_coord) if lat/lon were kept
-            # Replace the old data in results[metric]:
-            results[metric] = da_binned
 
     print("Bias metric calculations complete.")
     print("results:", results)  # debugging
+
+
+    altbin_config = config.get('altitude_binning', {})
+    if altbin_config.get('enabled', False):
+        user_bins = altbin_config.get('bins', [0,500,1000,2000])
+    
+        # We create a dictionary of masked lat/lon arrays for the metric
+        da_metric = results["RMSE"].assign_coords(altitude=aggregated_ens["altitude"])  # This is a DataArray now
+        bin_dict_metric = mask_altitude_bins(da_metric, alt_var="altitude", bins=user_bins)
+        # store it in results
+        results["RMSE_altbins"] = bin_dict_metric
+
+        # Create dictionaries of masked DataArrays for the ensemble & reference
+        ens_var_da = aggregated_ens[var_name].assign_coords(altitude=aggregated_ens["altitude"])  # e.g. shape (time, lat_coord, lon_coord)
+        bin_dict_ens = mask_altitude_bins(ens_var_da, alt_var="altitude", bins=user_bins)
+        results["ens_altbins"] = bin_dict_ens
+        ref_var_da = aggregated_ref[ref_var_name].assign_coords(altitude=aggregated_ens["altitude"])
+        bin_dict_ref = mask_altitude_bins(ref_var_da, alt_var="altitude", bins=user_bins)
+        results["ref_altbins"] = bin_dict_ref
+
+        print("Altbin results:", results)
 
     # return all plotable data
     return results, aggregated_ens, aggregated_ref, ds_ensemble_interp, ds_ref_prepared
@@ -466,13 +473,15 @@ def run_plots(config, results, aggregated_ens, aggregated_ref):
         ab_cfg = plot_cfg['altitude_bin_subplots']
         metric_name = ab_cfg.get('metric', 'RMSE')
         out_path = ab_cfg.get('out_file', 'output/rmse_by_altbin.png')
+        bin_dict_key = f"{metric_name}_altbins"
 
-        if metric_name in results:
+        if bin_dict_key in results:
             # Now results[metric_name] should be a DataArray with dims (alt_bin, lat_coord, lon_coord)
-            da_metric = results[metric_name]
-            plot_alt_bin_subplots(
-                da_metric,
+            bin_dict = results[bin_dict_key]
+            plot_alt_bin_subplots_dict(
+                bin_dict,
                 out_path=out_path,
+                metric=metric_name,
                 title=ab_cfg.get('title', "By-Altitude Subplots"),
                 ncols=ab_cfg.get('ncols', 2),
                 cmap=ab_cfg.get('cmap', 'viridis'),
@@ -480,7 +489,7 @@ def run_plots(config, results, aggregated_ens, aggregated_ref):
                 vmax=ab_cfg.get('vmax', None),
                 )
         else:
-            print(f"[Warning] {metric_name} not in results. Skipping altitude_bin_subplots.")
+            print(f"[Warning] {bin_dict_key} not in results. Skipping altitude_bin_subplots.")
 
 def main():
     args = parse_args()

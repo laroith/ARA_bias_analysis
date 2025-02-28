@@ -34,13 +34,13 @@ subset:
 
 ensemble:
   # Specify no particular members by default; let CLI override if needed
-  members: ['00','02','08','09']
+  members: ['08']
   # Default to not compute ensemble mean (CLI can override)
-  mean: true
+  mean: false
 
 aggregation:
   # Default is daily aggregation; can be overridden via CLI
-  period: "none"       # or "daily", "monthly", "seasonal"
+  period: "daily"       # or "daily", "monthly", "seasonal"
 
 bias:
   # Default is just RMSE (user can override via CLI for MAE, ME, etc.)
@@ -91,7 +91,7 @@ plot:
         variable: "precipitation"
         color: "blue"
         label: "Ensemble member"
-        member_selection: "mean"        # "all" or "mean", or "00" or ["00","01"] for picking members
+        member_selection: "all"        # "all" or "mean", or "00" or ["00","01"] for picking members
         #reduce_dims: ["lat_coord", "lon_coord"]  # optional domain-mean
         alt_bin_selection: ["(500.0, 1000.0]", "(1000.0, 1500.0]"]
       - source: "reference"
@@ -99,7 +99,7 @@ plot:
         #reduce_dims: ["lat_coord", "lon_coord"]
         color: "red"
         label: "Reference"
-        alt_bin_selection: ["(500.0, 1000.0]", "(1000.0, 1500.0]"]
+        #alt_bin_selection: ["(500.0, 1000.0]", "(1000.0, 1500.0]"]
 
 
   cycle:
@@ -111,7 +111,7 @@ plot:
     lines:
       - source: "ensemble"
         variable: "precipitation"
-        member_selection: "mean"        #"all" or "mean", or ["00","01"] for picking members
+        member_selection: "all"        #"all" or "mean", or ["00","01"] for picking members
         #reduce_dims: ["lat_coord", "lon_coord"]  # Domain+ensemble mean
         color: "blue"
         label: "Ensemble Cycle"
@@ -132,7 +132,7 @@ plot:
     lines:
       - source: "ensemble"
         variable: "precipitation"
-        member_selection: "mean"        # "all" or "mean", or ["00","01"] for picking members
+        member_selection: "all"        # "all" or "mean", or ["00","01"] for picking members
         #reduce_dims: ["time"]  # Maybe we want to flatten across time+members
         color: "green"
         label: "Ens Mem"
@@ -151,7 +151,7 @@ plot:
     metric: "RMSE"
     out_file: "output/rmse_by_member.png"
     title: "RMSE by Ensemble Member"
-    ncols: 4
+    ncols: 2
     cmap: "Blues"
 
   altitude_bin_subplots:
@@ -163,4 +163,3 @@ plot:
     cmap: "viridis"
     vmin: 0
     vmax: 30
-
