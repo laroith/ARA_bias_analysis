@@ -142,49 +142,41 @@ def plot_time_series_multi_line(lines_cfg,
                                 ylabel=None,
                                 show_trend=False):
     """
-    Plot multiple lines from different sources/datasets on the same figure.
-
-    If both 'member' and 'alt_bin' remain, we do a nested loop, 
-    so each line is (bin=..., mem=...).
-
-    Config usage (YAML example):
-        lines:
-          - source: "ensemble"
-            variable: "precipitation"
-            member_selection: "all"  # or "mean", or single name
-            alt_bin_selection: ["(500.0, 1000.0]", "(1000.0, 1500.0]"]  # or "all", "mean"
-            reduce_dims: ["lat_coord","lon_coord"]  # domain mean
-            color: "blue"
-            label: "Ens alt-bins"
-
-    The final dimension for time-series must include 'time' 
-    but can also have leftover 'member' or 'alt_bin' if user wants multiple lines.
+    Plot multiple time series lines from ensemble and reference datasets.
+    Supports optional altitude bin selection.
+    
+    Each line configuration (dict in lines_cfg) may specify:
+      - source: "ensemble" or "reference"
+      - variable: variable name (e.g. "precipitation" or "RR")
+      - member_selection: "all", "mean", or a specific member (or list)
+      - alt_bin_selection: "all", "mean", a single bin label, or list of bin labels;
+                           if specified, the function selects data along the "alt_bin" dimension.
+      - reduce_dims: dimensions to average over (e.g. ["lat_coord", "lon_coord"])
+      - color, label, etc.
+    
+    The function expects the input DataArray to have a "time" dimension and may have
+    additional "member" and "alt_bin" dimensions.
+    
     Parameters
     ----------
     lines_cfg : list of dict
-        Each item must specify:
-          - 'source': which dataset to pull from (e.g. "ensemble" or "reference")
-          - 'variable': which variable name (e.g. "precip" or "RR")
-          - member_selection: e.g. "all", "mean", or ["00","01"]
-          - alt_bin_selection: e.g. "all", "mean", or ["(500.0, 1000.0]", ...]
-          - reduce_dims: dims to average if desired
-          - optionally 'label', 'color', 'reduce_dims', etc.
+        List of configuration dictionaries.
     ds_ens : xarray.Dataset
-        The aggregated ensemble dataset (passed in from CLI).
+        Aggregated ensemble dataset.
     ds_ref : xarray.Dataset
-        The aggregated reference dataset.
+        Aggregated reference dataset.
     out_path : str
-        Where to save the figure.
+        Output file path.
     title : str, optional
         Figure title.
     ylabel : str, optional
-        Y‐axis label.
+        Y-axis label.
     show_trend : bool, optional
-        Whether to draw a simple linear trend line for each data series.
-
+        Whether to add a trend line for each series.
+    
     Returns
     -------
-    None (the figure is saved to out_path).
+    None
     """
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -194,10 +186,10 @@ def plot_time_series_multi_line(lines_cfg,
         source_key = line_cfg.get('source', 'ensemble')  # "ensemble" or "reference"
         var_name = line_cfg.get('variable')
         base_color = line_cfg.get('color', None)
-        label = line_cfg.get('label', f"{source_key}-{var_name}")
+        base_label = line_cfg.get('label', f"{source_key}-{var_name}")
         reduce_dims = line_cfg.get('reduce_dims', [])
         member_sel = line_cfg.get('member_selection', None)
-        alt_bin_sel = line_cfg.get('alt_bin_selection', None)
+        alt_bin_range = line_cfg.get('alt_bin_range', None)
 
         # 2) Pick the actual dataset or dataarray
         if source_key == 'ensemble':
@@ -226,20 +218,16 @@ def plot_time_series_multi_line(lines_cfg,
             print(f"[Warning] {source_key} is neither Dataset nor DataArray. Skipping.")
             continue
 
-        # 4) alt_bin selection (like 'member')
-        if alt_bin_sel is not None:
-            if isinstance(alt_bin_sel, str):
-                if alt_bin_sel == "all":
-                    pass
-                elif alt_bin_sel == "mean" and "alt_bin" in da_line.dims:
-                    da_line = da_line.mean(dim="alt_bin")
-                else:
-                    # Single bin label
-                    da_line = da_line.sel(alt_bin=alt_bin_sel)
-            elif isinstance(alt_bin_sel, list):
-                da_line = da_line.sel(alt_bin=alt_bin_sel)
+        # 3) If we have alt_bin_range, do the masking
+        if alt_bin_range is not None:
+            if "altitude" not in ds:
+                print("[Warning] No 'altitude' variable found. Cannot mask by altitude. Skipping mask.")
             else:
-                raise ValueError(f"Unknown alt_bin_selection: {alt_bin_sel}")
+                alt_min, alt_max = alt_bin_range
+                da_line = da_line.where(
+                    (ds["altitude"] >= alt_min) & (ds["altitude"] < alt_max),
+                    drop=True
+                )
 
 
         # 5) Member selection logic
@@ -272,23 +260,23 @@ def plot_time_series_multi_line(lines_cfg,
                 sub_da_bin = da_line.sel(alt_bin=bin_val)
                 for mem_val in sub_da_bin.member.values:
                     sub_da_mem = sub_da_bin.sel(member=mem_val)
-                    line_label = f"{label} (bin={bin_val}, mem={mem_val})"
+                    line_label = f"{base_label} (bin={bin_val}, mem={mem_val})"
                     _plot_time_series_one_line(sub_da_mem, line_label, ax, show_trend, base_color)
         elif "alt_bin" in da_line.dims:
             # Single loop over alt_bin
             for bin_val in da_line.alt_bin.values:
                 sub_da_bin = da_line.sel(alt_bin=bin_val)
-                line_label = f"{label} (bin={bin_val})"
+                line_label = f"{base_label} (bin={bin_val})"
                 _plot_time_series_one_line(sub_da_bin, line_label, ax, show_trend, base_color)
         elif "member" in da_line.dims:
             # Single loop over member
             for mem_val in da_line.member.values:
                 sub_da_mem = da_line.sel(member=mem_val)
-                line_label = f"{label} (mem={mem_val})"
+                line_label = f"{base_label} (mem={mem_val})"
                 _plot_time_series_one_line(sub_da_mem, line_label, ax, show_trend, base_color)
         else:
             # single line
-            _plot_time_series_one_line(da_line, label, ax, show_trend, base_color)
+            _plot_time_series_one_line(da_line, base_label, ax, show_trend, base_color)
 
 
     ax.set_xlabel("Time")
@@ -336,19 +324,29 @@ def plot_cycle_multi(lines_cfg,
                      title=None,
                      ylabel=None):
     """
-    Plot multiple "cycle" lines (diurnal, daily, monthly, seasonal, annual) 
-    from different datasets.
+    Plot multiple lines showing a time-based cycle (diurnal, daily, monthly, seasonal, annual).
 
-    For each entry in lines_cfg:
+    Each line_cfg in lines_cfg may include:
       - source: "ensemble" or "reference"
-      - variable: e.g. "precip"
-      - member_selection: "all", "mean", or a list like ["00","01"]
-      - reduce_dims: which dims to average out (optional)
-      - color, label, etc.
-    If after these selections there's still a "member" dim, we loop over each 
-    member separately, so each line is plotted and labeled (mem 00, mem 01, etc.).
+      - variable: e.g. "precipitation" or "RR"
+      - member_selection: "all", "mean", or a single ID or list
+      - alt_bin_range: [alt_min, alt_max] for direct masking by altitude
+      - color: color for the line
+      - label: label for legend
 
-    Recognized cycle_type options: "diurnal", "daily", "monthly", "seasonal", "annual".
+    The function:
+      1) Selects the dataset (ensemble or reference).
+      2) Does optional member selection (all, mean, single ID, or list).
+      3) Applies altitude masking if alt_bin_range is given (directly on ds["altitude"]).
+      4) Averages leftover dims (e.g. lat/lon), then groups by cycle_type.
+      5) Plots the resulting curve on a single figure.
+
+    cycle_type can be one of:
+      - "diurnal" : grouping by time.hour
+      - "daily"   : grouping by time.dayofyear
+      - "monthly" : grouping by time.month
+      - "seasonal": grouping by time.season
+      - "annual"  : grouping by time.year
     """
 
     import numpy as np
@@ -365,7 +363,7 @@ def plot_cycle_multi(lines_cfg,
         color = line_cfg.get('color', None)
         base_label = line_cfg.get('label', f"{source_key}-{var_name}")
         member_sel = line_cfg.get('member_selection', None)
-        alt_bin_sel = line_cfg.get('alt_bin_selection', None)
+        alt_bin_range = line_cfg.get('alt_bin_range', None)
 
         # --- 2) Pick the dataset or dataarray ---
         if source_key == 'ensemble':
@@ -388,22 +386,7 @@ def plot_cycle_multi(lines_cfg,
             print(f"[Warning] {source_key} is neither Dataset nor DataArray. Skipping.")
             continue
 
-        # (B) alt_bin selection logic
-        if alt_bin_sel is not None:
-            if isinstance(alt_bin_sel, str):
-                if alt_bin_sel=="all":
-                    pass
-                elif alt_bin_sel=="mean" and "alt_bin" in da.dims:
-                    da = da.mean(dim="alt_bin")
-                else:
-                    # single bin label
-                    da = da.sel(alt_bin=alt_bin_sel)
-            elif isinstance(alt_bin_sel, list):
-                da = da.sel(alt_bin=alt_bin_sel)
-            else:
-                raise ValueError(f"Unknown alt_bin_selection: {alt_bin_sel}")
-
-        # --- 3) Member selection logic ---
+        #  Member selection logic ---
         if member_sel is not None:
             if isinstance(member_sel, str):
                 if member_sel == "all":
@@ -418,7 +401,18 @@ def plot_cycle_multi(lines_cfg,
             else:
                 raise ValueError(f"Unknown member_selection: {member_sel}")
 
-        print(da.dims)
+        # Altitude range masking
+        if alt_bin_range is not None:
+            if "altitude" in ds:
+                alt_min, alt_max = alt_bin_range
+                da = da.where(
+                    (ds["altitude"] >= alt_min) &
+                    (ds["altitude"] < alt_max),
+                    drop=True
+                )
+            else:
+                print(f"[Warning] No altitude variable found; skipping alt mask for '{base_label}'.")
+
         # --- 4) reduce_dims => average out user-specified dims ---
         if reduce_dims:
             da = da.mean(dim=reduce_dims)
@@ -429,43 +423,13 @@ def plot_cycle_multi(lines_cfg,
             if leftover:
                 da = da.mean(dim=leftover)
 
-        # --- 5) If there's a "member"or "alt_bin" dimension left, we plot each one separately ---
-        if "alt_bin" in da.dims and "member" in da.dims:
-            # double loop
-            for bin_val in da.alt_bin.values:
-                sub_da_bin = da.sel(alt_bin=bin_val)
-                for mem_val in sub_da_bin.member.values:
-                    sub_da = sub_da_bin.sel(member=mem_val)
-                    lab = f"{base_label} (bin={bin_val}, mem={mem_val})"
-                    xvals, yvals = _group_cycle_data(sub_da, cycle_type)
-                    ax.plot(xvals, yvals, label=lab, color=color)
-        elif "alt_bin" in da.dims:
-            # single loop alt_bin
-            for bin_val in da.alt_bin.values:
-                sub_da = da.sel(alt_bin=bin_val)
-                lab = f"{base_label} (bin={bin_val})"
-                xvals, yvals = _group_cycle_data(sub_da, cycle_type)
-                ax.plot(xvals, yvals, label=lab, color=color)
-        elif "member" in da.dims:
-            for mem_val in da.member.values:
-                sub_da = da.sel(member=mem_val)
-                mem_label = f"{base_label} (mem {mem_val})"
+        # Now group by the requested cycle dimension
+        xvals, yvals = _group_cycle_data(da, cycle_type)
 
-                xvals, yvals = _group_cycle_data(sub_da, cycle_type)
-                # Plot
-                if cycle_type == "seasonal":
-                    ax.bar(xvals, yvals, label=mem_label, color=color, alpha=0.5)
-                else:
-                    ax.plot(xvals, yvals, label=mem_label, color=color)
-        else:
-            # Single line (no member dim)
-            xvals, yvals = _group_cycle_data(da, cycle_type)
-            if cycle_type == "seasonal":
-                ax.bar(xvals, yvals, label=base_label, color=color, alpha=0.5)
-            else:
-                ax.plot(xvals, yvals, label=base_label, color=color)
+        # Plot
+        ax.plot(xvals, yvals, label=base_label, color=color)
 
-    # --- 6) Finalize axes and save ---
+    # Finalize plot
     _setup_cycle_axes(ax, cycle_type, ylabel, title)
     ax.legend()
     plt.tight_layout()
@@ -550,40 +514,19 @@ def plot_distribution_multi(lines_cfg,
                             xlabel=None,
                             ylabel=None):
     """
-    Plot multiple distributions from different datasets in one figure.
+    Plot multiple distributions from different datasets in one figure, 
+    with optional altitude masking (alt_bin_range) and member selection.
     
-    This updated version can also handle an 'alt_bin' dimension
-    (created by groupby_altitude_bins or similar).
+    For each line config in lines_cfg:
+      - source: "ensemble" or "reference"
+      - variable: e.g., "precipitation" / "RR"
+      - member_selection: "all", "mean", a single ID, or list of IDs
+      - alt_bin_range: [alt_min, alt_max] for direct altitude masking
+      - reduce_dims: dims to average out before flattening
+      - color, label, alpha, etc.
     
-    The logic now mirrors 'member' logic: we parse 'alt_bin_selection'
-    from lines_cfg, apply selection or averaging, and if 'alt_bin'
-    remains, we loop over each bin for separate distributions.
-
-    [CHANGE: The new alt_bin handling is marked below!]
-
-    Parameters
-    ----------
-    lines_cfg : list of dict
-        Each item might have:
-          - source: "ensemble" or "reference"
-          - variable: "precip" etc.
-          - member_selection: e.g. "all", "mean", ["00","01"] ...
-          - alt_bin_selection: e.g. "all", "mean", ["(500.0, 1000.0]","(1000.0, 2000.0]"], or single bin
-          - reduce_dims: dims to collapse
-          - color, label, alpha ...
-        etc.
-    ds_ens : xarray.Dataset
-    ds_ref : xarray.Dataset
-    kind : str
-        "hist" or "kde" or possibly other distribution types
-    bins : int
-        # of bins if 'hist'
-    out_path : str
-        Where to save the figure
-    title : str
-        Plot title
-    xlabel, ylabel : str
-        Axis labels
+    The function then flattens the data (removing NaNs) and plots either 
+    a histogram or KDE for each line configuration.
     """
     import numpy as np
     import matplotlib.pyplot as plt
@@ -599,7 +542,7 @@ def plot_distribution_multi(lines_cfg,
         label = line_cfg.get('label', f"{source}-{var_name}")
         alpha = line_cfg.get('alpha', 0.5)
         member_sel = line_cfg.get('member_selection', None)
-        alt_bin_sel = line_cfg.get('alt_bin_selection', None)
+        alt_bin_range = line_cfg.get('alt_bin_range', None)
 
         # Pick dataset
         if source == 'ensemble':
@@ -642,19 +585,16 @@ def plot_distribution_multi(lines_cfg,
 
 
         # (B) alt_bin selection logic
-        if alt_bin_sel is not None:
-            if isinstance(alt_bin_sel, str):
-                if alt_bin_sel=="all":
-                    pass
-                elif alt_bin_sel=="mean" and "alt_bin" in da.dims:
-                    da = da.mean(dim="alt_bin")
-                else:
-                    # single bin label
-                    da = da.sel(alt_bin=alt_bin_sel)
-            elif isinstance(alt_bin_sel, list):
-                da = da.sel(alt_bin=alt_bin_sel)
-            else:
-                raise ValueError(f"Unknown alt_bin_selection: {alt_bin_sel}")
+        if alt_bin_range is not None:
+           if "altitude" in ds:
+               alt_min, alt_max = alt_bin_range
+               da = da.where(
+                   (ds["altitude"] >= alt_min) &
+                   (ds["altitude"] < alt_max),
+                   drop=True
+               )
+           else:
+               print(f"[Warning] No altitude variable found. Skipping altitude mask for {label}.")
 
         # Reduce dims (default to flatten everything if not provided)
         if reduce_dims:
@@ -662,28 +602,10 @@ def plot_distribution_multi(lines_cfg,
         else:
             pass
 
-        if "alt_bin" in da.dims and "member" in da.dims:
-            for bin_val in da.alt_bin.values:
-                sub_da_bin = da.sel(alt_bin=bin_val)
-                for mem_val in sub_da_bin.member.values:
-                    sub_da_mem = sub_da_bin.sel(member=mem_val)
-                    dist_label = f"{label} (bin={bin_val}, mem={mem_val})"
-                    _plot_distribution_1d(sub_da_mem, dist_label, kind, bins, alpha, color, ax)
-        elif "alt_bin" in da.dims:
-            # Single loop over each alt_bin
-            for bin_val in da.alt_bin.values:
-                sub_da_bin = da.sel(alt_bin=bin_val)
-                dist_label = f"{label} (bin={bin_val})"
-                _plot_distribution_1d(sub_da_bin, dist_label, kind, bins, alpha, color, ax)
-        elif "member" in da.dims:
-            # Single loop over each member
-            for mem_val in da.member.values:
-                sub_da_mem = da.sel(member=mem_val)
-                dist_label = f"{label} (mem={mem_val})"
-                _plot_distribution_1d(sub_da_mem, dist_label, kind, bins, alpha, color, ax)
-        else:
-            # Single distribution
-            _plot_distribution_1d(da, label, kind, bins, alpha, color, ax)
+        # --- 6) Flatten & plot a single distribution ---
+        # We no longer loop over 'alt_bin' or 'member' here because 
+        # we've already handled those via direct selection/averaging.
+        _plot_distribution_1d(da, label, kind, bins, alpha, color, ax)
 
 
     if xlabel:

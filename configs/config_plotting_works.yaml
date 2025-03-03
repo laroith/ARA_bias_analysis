@@ -1,0 +1,151 @@
+# configs/config.yaml
+
+input:
+  # Pattern to find your ensemble member files
+  ensemble_pattern: "/home/lar/ARA/bias_analysis/data/total_precipitation_2017100*.nc"
+  
+  # Single reference dataset (change path as needed)
+  reference_file: "data/INCAL_HOURLY_RR_201710.nc"
+  
+  # Variable names for ensemble & reference
+  # (These should match your test NetCDF files)
+  var_name: "precipitation"
+  ref_var_name: "RR"
+  
+  # Names for the latitude/longitude in the ensemble dataset
+  lat_name: "latitude"
+  lon_name: "longitude"
+  
+  # Names for the latitude/longitude in the reference dataset
+  ref_lat_name: "lat"
+  ref_lon_name: "lon"
+  
+  # Optional missing_value override (uncomment if needed)
+  missing_value: -999
+
+subset:
+  # Geographic subsetting
+  lat_bounds: [45, 48]
+  lon_bounds: [11, 13]
+  
+  # Time subsetting (change to match your test data coverage)
+  start_time: "2017-10-01T00:00:00"
+  end_time: "2017-10-02T00:00:00"
+
+ensemble:
+  # Specify no particular members by default; let CLI override if needed
+  members: ['08','09']
+  # Default to not compute ensemble mean (CLI can override)
+  mean: false
+
+aggregation:
+  # Default is daily aggregation; can be overridden via CLI
+  period: "none"       # or "daily", "monthly", "seasonal"
+
+bias:
+  # Default is just RMSE (user can override via CLI for MAE, ME, etc.)
+  metrics: ["MAE"]
+  dimensions: ["time"] #average over time to receive a lat lon map
+
+dem:
+  # Include altitude from INCA elevation map
+  enabled: true
+  dem_path: "data/INCA_DEM.nc"
+  dem_var: "ZH"
+  lat_var: "lat"
+  lon_var: "lon"
+  dim_lat: "y"
+  dim_lon: "x"
+  regrid_to_reference: true
+  bins: [0, 500, 1000, 1500, 2000, 3000]
+
+altitude_binning:
+  enabled: true
+  # If we want to override dem.bins:
+#  bins: [0, 500, 1000, 2000]
+
+#output:
+  # Where to save results (NetCDF & plot)
+  # Make sure this folder exists or is created by your script/tests
+#  save_netcdf: "output/rmse_test_plotting.nc"
+
+plot:
+  enabled: true
+
+  spatial_map:
+    enabled: false #ATTENTION!! if multiple members are loaded and ensemble mean is disabled, set this to false -> use member subplots instead
+    metric: "RMSE"
+    out_file: "output/spatial_rmse.png"
+    cmap: "coolwarm"
+    vmin: 0
+    vmax: 30
+
+  time_series:
+    enabled: true
+    out_file: "output/time_series_altbins.png"
+    alt_bin_ranges:
+      - [0, 500]
+      - [500, 1000]
+    ensemble_members: ["08", "09"]   # or "all", or "mean"
+    include_reference: true
+    label_template: "{source}-{member} alt={alt_min}-{alt_max}"
+
+
+  cycle:
+    enabled: true
+    out_file: "output/cycle_altbin.png"
+    cycle_type: "diurnal"           # "diurnal", "daily", "monthly", "seasonal", "annual"
+    title: "Monthly Cycle by Alt Bins"
+    ylabel: "mm"
+    
+    alt_bin_ranges:
+      - [0, 500]
+      - [500, 1000]
+    ensemble_members: ["08","09"]        # or "all" or ["08","09"]
+    include_reference: true
+
+    # Possibly define a custom label template and color approach
+    label_template: "{source}-{member} alt={alt_min}-{alt_max}"
+    auto_color_cycle: true
+
+
+  distribution:
+    enabled: true
+    kind: "hist"               # or "kde"
+    bins: 30                   # only relevant for "hist"
+    out_file: "output/dist_altbins.png"
+    title: "Distribution by Altitude Bins"
+    xlabel: "mm/h"
+    ylabel: "Count"
+    
+    # More abstract approach:
+    alt_bin_ranges:
+      - [0, 500]
+      - [500, 1000]
+    ensemble_members: ["08","09"]   # or "mean", or ["08","09"]
+    include_reference: true
+    
+    # Colors / labeling
+    auto_color_cycle: true
+    label_template: "{source}-{member} alt={alt_min}-{alt_max}"
+
+
+  member_subplots:
+    enabled: true
+    # Example: If you had 'member' dimension in your ensemble, 
+    # and wanted to plot metric side by side.
+    metric: "MAE"
+    out_file: "output/mae_by_member.png"
+    title: "MAE by Ensemble Member"
+    ncols: 2
+    cmap: "Blues"
+
+  altitude_bin_subplots:
+    enabled: true
+    metric: "MAE"
+    out_file: "output/MAE_by_altbin.png"
+    title: "MAE by Altitude Bin"
+    ncols: 3       # how many columns in the subplot grid
+    cmap: "viridis"
+    vmin: -30
+    vmax: 30

@@ -35,6 +35,11 @@ from scripts.plotting import (
     plot_member_subplots,
     plot_alt_bin_subplots_dict
 )
+from scripts.build_config import(
+    build_time_series_lines,
+    build_distribution_lines,
+    build_cycle_lines
+)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run climate analysis + optional plotting")
@@ -178,7 +183,7 @@ def run_analysis(config):
             dim_lat=dim_lat,
             dim_lon=dim_lon
         )
-        print("Elevation dataset:", ds_dem)
+#        print("Elevation dataset:", ds_dem)
     else:
         ds_dem = None
         alt_bins = []
@@ -211,7 +216,7 @@ def run_analysis(config):
         if dem_config.get('regrid_to_reference', False):
             print("Regridding DEM to reference grid before attaching altitude...")
             ds_dem = regrid_to_target(ds_dem, ds_ref_prepared)
-            print("Regridded Elevation data:", ds_dem)
+#            print("Regridded Elevation data:", ds_dem)
         # Now attach altitude to ensemble
         ds_ensemble_interp = add_alt_to_ds(ds_ensemble_interp, ds_dem)
         
@@ -219,7 +224,7 @@ def run_analysis(config):
         ds_ref_prepared = add_alt_to_ds(ds_ref_prepared, ds_dem)
         
         print("Altitude successfully attached to ensemble & reference datasets.")
-        print("Ensemble data with altitude:", ds_ensemble_interp)
+#        print("Ensemble data with altitude:", ds_ensemble_interp)
 
     # Decide the variable name and missing_value from config
     var_name = config['input'].get('var_name', 'precipitation')
@@ -325,18 +330,18 @@ def run_analysis(config):
 
 
     print("Bias metric calculations complete.")
-    print("results:", results)  # debugging
+#    print("results:", results)  # debugging
 
 
     altbin_config = config.get('altitude_binning', {})
     if altbin_config.get('enabled', False):
-        user_bins = altbin_config.get('bins', [0,500,1000,2000])
+        user_bins = altbin_config.get('bins', [0,500,1000,1500,2000])
     
         # We create a dictionary of masked lat/lon arrays for the metric
-        da_metric = results["RMSE"].assign_coords(altitude=aggregated_ens["altitude"])  # This is a DataArray now
+        da_metric = results[metric].assign_coords(altitude=aggregated_ens["altitude"])  # This is a DataArray now
         bin_dict_metric = mask_altitude_bins(da_metric, alt_var="altitude", bins=user_bins)
         # store it in results
-        results["RMSE_altbins"] = bin_dict_metric
+        results["metric_altbins"] = bin_dict_metric
 
         # Create dictionaries of masked DataArrays for the ensemble & reference
         ens_var_da = aggregated_ens[var_name].assign_coords(altitude=aggregated_ens["altitude"])  # e.g. shape (time, lat_coord, lon_coord)
@@ -346,7 +351,7 @@ def run_analysis(config):
         bin_dict_ref = mask_altitude_bins(ref_var_da, alt_var="altitude", bins=user_bins)
         results["ref_altbins"] = bin_dict_ref
 
-        print("Altbin results:", results)
+#        print("Altbin results:", results["metric_altbins"])
 
     # return all plotable data
     return results, aggregated_ens, aggregated_ref, ds_ensemble_interp, ds_ref_prepared
@@ -391,64 +396,63 @@ def run_plots(config, results, aggregated_ens, aggregated_ref):
         else:
             print(f"Spatial map skipping: either {metric_name} not in results or not 2D.")
 
-    # EXAMPLE: Time series with optional trend
+    # TIME SERIES
     if plot_cfg.get('time_series', {}).get('enabled', False):
         ts_cfg = plot_cfg['time_series']
-        out_path = ts_cfg.get('out_file', 'output/time_series.png')
-        show_trend = ts_cfg.get('show_trend', False)
 
-        # Gather line config
-        lines_cfg = ts_cfg.get('lines', [])
+        # 1) Build lines automatically
+        lines_cfg = build_time_series_lines(ts_cfg)
 
-        # Pass them to our new multi-line plotting function
+        # 2) Then call your existing function:
         plot_time_series_multi_line(
             lines_cfg=lines_cfg,
             ds_ens=aggregated_ens,
             ds_ref=aggregated_ref,
-            out_path=out_path,
+            out_path=ts_cfg.get('out_file', 'output/time_series.png'),
             title=ts_cfg.get('title', 'Time Series'),
             ylabel=ts_cfg.get('ylabel', 'mm'),
-            show_trend=show_trend,
+            show_trend=ts_cfg.get('show_trend', False),
         )
 
 
-    # CYCLE - new multi approach
+    # CYCLE 
     if plot_cfg.get('cycle', {}).get('enabled', False):
         c_cfg = plot_cfg['cycle']
-        out_path = c_cfg.get('out_file', 'output/cycle.png')
-        cycle_type = c_cfg.get('type', 'monthly')
-        lines_cfg = c_cfg.get('lines', [])
+        # build lines automatically
+        lines_cfg = build_cycle_lines(c_cfg)
 
+        # then call your existing cycle plotting function
+        from scripts.plotting import plot_cycle_multi
         plot_cycle_multi(
             lines_cfg=lines_cfg,
             ds_ens=aggregated_ens,
             ds_ref=aggregated_ref,
-            cycle_type=cycle_type,
-            out_path=out_path,
+            cycle_type=c_cfg.get('cycle_type', 'monthly'),
+            out_path=c_cfg.get('out_file', 'output/cycle_altbin.png'),
             title=c_cfg.get('title', 'Cycle Plot'),
             ylabel=c_cfg.get('ylabel', 'mm')
         )
 
-    # DISTRIBUTION - new multi approach
+    # DISTRIBUTION 
     if plot_cfg.get('distribution', {}).get('enabled', False):
         dist_cfg = plot_cfg['distribution']
-        out_path = dist_cfg.get('out_file', 'output/distribution.png')
-        kind = dist_cfg.get('kind', 'hist')
-        bins = dist_cfg.get('bins', 20)
-        lines_cfg = dist_cfg.get('lines', [])
+        # build lines automatically
+        lines_cfg = build_distribution_lines(dist_cfg)
 
+        # now call your existing distribution function
+        from scripts.plotting import plot_distribution_multi
         plot_distribution_multi(
             lines_cfg=lines_cfg,
             ds_ens=aggregated_ens,
             ds_ref=aggregated_ref,
-            kind=kind,
-            bins=bins,
-            out_path=out_path,
+            kind=dist_cfg.get('kind', 'hist'),
+            bins=dist_cfg.get('bins', 20),
+            out_path=dist_cfg.get('out_file', 'output/distribution.png'),
             title=dist_cfg.get('title', 'Distribution'),
-            # Optionally specify x/y labels
             xlabel=dist_cfg.get('xlabel', 'Value'),
             ylabel=dist_cfg.get('ylabel', None)
         )
+
 
     # EXAMPLE: side-by-side subplots for multiple ensemble members
     if plot_cfg.get('member_subplots', {}).get('enabled', False):
@@ -473,7 +477,7 @@ def run_plots(config, results, aggregated_ens, aggregated_ref):
         ab_cfg = plot_cfg['altitude_bin_subplots']
         metric_name = ab_cfg.get('metric', 'RMSE')
         out_path = ab_cfg.get('out_file', 'output/rmse_by_altbin.png')
-        bin_dict_key = f"{metric_name}_altbins"
+        bin_dict_key = f"metric_altbins"
 
         if bin_dict_key in results:
             # Now results[metric_name] should be a DataArray with dims (alt_bin, lat_coord, lon_coord)
