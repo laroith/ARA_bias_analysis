@@ -5,7 +5,7 @@ input:
   ensemble_pattern: "/home/lar/ARA/bias_analysis/data/total_precipitation_2017100*.nc"
   
   # Single reference dataset (change path as needed)
-  reference_file: "data/INCAL_HOURLY_RR_201710.nc"
+  reference_file: "/home/lar/ARA/bias_analysis/data/INCAL_HOURLY_RR_201710.nc"
   
   # Variable names for ensemble & reference
   # (These should match your test NetCDF files)
@@ -37,6 +37,11 @@ ensemble:
   members: ['08','09']
   # Default to not compute ensemble mean (CLI can override)
   mean: false
+
+weather_types:
+  # ERA5 weathertypes for Europe, keep only days with included weathertype
+  file: "/home/lar/ARA/bias_analysis/data/ERA-5_historical.csv"
+  #include: ['2']
 
 aggregation:
   # Default is daily aggregation; can be overridden via CLI

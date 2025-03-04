@@ -22,6 +22,7 @@ from scripts.temporal_stats import (
 from scripts.bias_metrics import (
     root_mean_squared_error, mean_absolute_error, mean_error
 )
+from scripts.weather_filter import load_weather_types_csv, filter_by_weather_types
 from scripts.elevation_manager import (
     load_and_subset_dem,
     add_alt_to_ds,
@@ -192,16 +193,16 @@ def run_analysis(config):
     # weather type filtering
     weather_config = config.get('weather_types', {})
     if 'file' in weather_config and 'include' in weather_config and weather_config['include']:
-        from scripts.weather_filter import load_weather_types_csv, filter_by_weather_types
         print(f"Filtering datasets by weather types: {weather_config['include']}")
         # For example, if your CSV has columns date, slwt
         wt_da = load_weather_types_csv(csv_path=weather_config['file'],
                                        date_col='date',
                                        wt_col='slwt')
         ds_ensemble = filter_by_weather_types(ds_ensemble, wt_da, include_types=weather_config['include']) 
-        print("Ensemble dataset after weather type filtering:\n", ds_ensemble)
+#        print("Ensemble dataset after weather type filtering:\n", ds_ensemble)
         ds_ref_prepared = filter_by_weather_types(ds_ref_prepared, wt_da, include_types=weather_config['include']) 
-        print("Reference dataset after weather type filtering:\n", ds_ref_prepared)
+#        print("Reference dataset after weather type filtering:\n", ds_ref_prepared)
+        print("Weather type filtering complete.")
 
     # Regrid ensemble to match reference
     print("Regridding ensemble to match reference grid...")
