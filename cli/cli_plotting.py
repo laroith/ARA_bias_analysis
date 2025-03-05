@@ -24,6 +24,7 @@ from scripts.bias_metrics import (
 )
 from scripts.weather_filter import load_weather_types_csv, filter_by_weather_types
 from scripts.precipitation_filter import apply_wet_filter, apply_precip_range
+from scripts.unit_conversion import unify_temperature_units
 from scripts.elevation_manager import (
     load_and_subset_dem,
     add_alt_to_ds,
@@ -213,6 +214,22 @@ def run_analysis(config):
 #    print(ds_ensemble_interp.time.values)
 #    print("Ensemble data after regridding:", ds_ensemble_interp)
 
+    # get units
+    ds_var_units = ds_ensemble_interp[var_name].attrs.get("units", "").lower()
+    ds_ref_units = ds_ref_prepared[ref_var_name].attrs.get("units", "").lower()
+
+    if "temperature" in var_name.lower() or "t2m" in var_name.lower():
+        # unify ensemble
+        ds_ensemble_interp = unify_temperature_units(ds_ensemble_interp, var_name, target="degree_Celsius")
+        # unify reference
+        ds_ref_prepared    = unify_temperature_units(ds_ref_prepared, ref_var_name, target="degree_Celsius")
+
+        # Optional: check if they now match
+        # now they both should have "degC" as units
+        ens_units = ds_ensemble_interp[var_name].attrs.get("units", "unknown")
+        ref_units = ds_ref_prepared[ref_var_name].attrs.get("units", "unknown")
+        if ens_units != ref_units:
+            print(f"[Warning] Ensemble {ens_units} vs reference {ref_units} do not match after conversion.")
 
     # Decide if you want to analyze only datapoints above a certain threshold
     # e.g. distributions of hourly gridcell rainfall only if there actually was rainfall -> omit the 0's 
@@ -401,6 +418,8 @@ def run_plots(config, results, aggregated_ens, aggregated_ref):
         print("Plotting is disabled in config.")
         return
 
+    ens_var = config['input'].get('var_name', 'precipitation')
+    ref_var = config['input'].get('ref_var_name', 'RR')
     plot_cfg = config['plot']
 
     # EXAMPLE: Spatial map of the first metric
@@ -423,7 +442,7 @@ def run_plots(config, results, aggregated_ens, aggregated_ref):
         ts_cfg = plot_cfg['time_series']
 
         # 1) Build lines automatically
-        lines_cfg = build_time_series_lines(ts_cfg)
+        lines_cfg = build_time_series_lines(ts_cfg, ens_var=ens_var, ref_var=ref_var)
 
         # 2) Then call your existing function:
         plot_time_series_multi_line(
@@ -441,7 +460,7 @@ def run_plots(config, results, aggregated_ens, aggregated_ref):
     if plot_cfg.get('cycle', {}).get('enabled', False):
         c_cfg = plot_cfg['cycle']
         # build lines automatically
-        lines_cfg = build_cycle_lines(c_cfg)
+        lines_cfg = build_cycle_lines(c_cfg, ens_var=ens_var, ref_var=ref_var)
 
         # then call your existing cycle plotting function
         from scripts.plotting import plot_cycle_multi
@@ -459,7 +478,7 @@ def run_plots(config, results, aggregated_ens, aggregated_ref):
     if plot_cfg.get('distribution', {}).get('enabled', False):
         dist_cfg = plot_cfg['distribution']
         # build lines automatically
-        lines_cfg = build_distribution_lines(dist_cfg)
+        lines_cfg = build_distribution_lines(dist_cfg, ens_var=ens_var, ref_var=ref_var)
 
         # now call your existing distribution function
         from scripts.plotting import plot_distribution_multi

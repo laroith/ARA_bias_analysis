@@ -2,15 +2,15 @@
 
 input:
   # Pattern to find your ensemble member files
-  ensemble_pattern: "/home/lar/ARA/bias_analysis/data/total_precipitation_2017100*.nc"
+  ensemble_pattern: "/home/lar/ARA/bias_analysis/data/air_temperature_2m_2016100*.nc"  # "/home/lar/ARA/bias_analysis/data/total_precipitation_2017100*.nc"
   
   # Single reference dataset (change path as needed)
-  reference_file: "/home/lar/ARA/bias_analysis/data/INCAL_HOURLY_RR_201710.nc"
+  reference_file: "/home/lar/ARA/bias_analysis/data/INCAL_HOURLY_T2M_201610.nc"
   
   # Variable names for ensemble & reference
   # (These should match your test NetCDF files)
-  var_name: "precipitation"
-  ref_var_name: "RR"
+  var_name: "air_temperature" #"precipitation"
+  ref_var_name: "T2M" #"RR"
   
   # Names for the latitude/longitude in the ensemble dataset
   lat_name: "latitude"
@@ -29,26 +29,23 @@ subset:
   lon_bounds: [11, 13]
   
   # Time subsetting (change to match your test data coverage)
-  start_time: "2017-10-01T00:00:00"
-  end_time: "2017-10-02T00:00:00"
+  start_time: "2016-10-07T00:00:00"
+  end_time: "2016-10-09T00:00:00"
 
 wet_filter:
   # use only gridcells and timestamps with precipiation over a threshold
-  enabled: true
+  enabled: false
   threshold: 0.1
   mask_as_zero: false # set true if we want to aggregate a sum later
 
 precip_category:
   enabled: false
-  label: "heavy"     # just for logging
-  min_val: 10.0
-  max_val: 999999.0
+  label: "heavy"     # or "weak"
+  min_val: 4.0 # could be 0.1 for weak
+  max_val: 999999.0 # could be 5.0 for weak
 
-precip_category:
-  enabled: true
-  label: "weak"
-  min_val: 0.1
-  max_val: 4.0
+
+
 
 
 ensemble:
@@ -120,7 +117,7 @@ plot:
     out_file: "output/cycle_altbin.png"
     cycle_type: "diurnal"           # "diurnal", "daily", "monthly", "seasonal", "annual"
     title: "Monthly Cycle by Alt Bins"
-    ylabel: "mm"
+    ylabel: "K" #"mm"
     
     alt_bin_ranges:
       - [0, 500]
@@ -139,7 +136,7 @@ plot:
     bins: 30                   # only relevant for "hist"
     out_file: "output/dist_altbins.png"
     title: "Distribution by Altitude Bins"
-    xlabel: "mm/h"
+    xlabel: "K" #"mm/h"
     ylabel: "Count"
     
     # More abstract approach:
@@ -171,5 +168,5 @@ plot:
     title: "MAE by Altitude Bin"
     ncols: 3       # how many columns in the subplot grid
     cmap: "viridis"
-    vmin: -30
-    vmax: 30
+    vmin: -4
+    vmax: 4

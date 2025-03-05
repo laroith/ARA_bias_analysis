@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from itertools import cycle
 
-def build_cycle_lines(cycle_cfg):
+def build_cycle_lines(cycle_cfg, ens_var="precipitation", ref_var="RR"):
     """
     Build a list of line_cfg dicts for plot_cycle_multi(), given a minimal config.
     
@@ -56,7 +56,7 @@ def build_cycle_lines(cycle_cfg):
             )
             line_cfg = {
                 "source": "ensemble",
-                "variable": "precipitation", # if you always name ensemble var "precipitation"
+                "variable": ens_var,
                 "member_selection": mem_id,
                 "alt_bin_range": [alt_min, alt_max],
                 "color": color,
@@ -76,7 +76,7 @@ def build_cycle_lines(cycle_cfg):
             )
             line_cfg = {
                 "source": "reference",
-                "variable": "RR",  # if reference is always "RR"
+                "variable": ref_var,
                 "alt_bin_range": [alt_min, alt_max],
                 "color": color,
                 "label": label
@@ -85,7 +85,7 @@ def build_cycle_lines(cycle_cfg):
 
     return lines_cfg
 
-def build_time_series_lines(ts_cfg):
+def build_time_series_lines(ts_cfg, ens_var="precipitation", ref_var="RR"):
     """
     Build a list of line_cfg dicts for plot_time_series_multi_line()
     from a more minimal config in ts_cfg.
@@ -136,7 +136,7 @@ def build_time_series_lines(ts_cfg):
             )
             line_entry = {
                 "source": "ensemble",
-                "variable": "precipitation",  # Hardcode ensemble variable
+                "variable": ens_var,  
                 "member_selection": mem_id,
                 "alt_bin_range": [alt_min, alt_max],
                 "color": c,
@@ -156,7 +156,7 @@ def build_time_series_lines(ts_cfg):
             )
             line_entry = {
                 "source": "reference",
-                "variable": "RR",    # Hardcode reference variable
+                "variable": ref_var,
                 "alt_bin_range": [alt_min, alt_max],
                 "color": c,
                 "label": lbl
@@ -171,7 +171,7 @@ def build_time_series_lines(ts_cfg):
 import matplotlib.pyplot as plt
 from itertools import cycle
 
-def build_distribution_lines(dist_cfg):
+def build_distribution_lines(dist_cfg, ens_var="precipitation", ref_var="RR"):
     """
     Build a list of line_cfg dicts for plot_distribution_multi()
     from a simpler distribution config in dist_cfg.
@@ -213,7 +213,7 @@ def build_distribution_lines(dist_cfg):
             )
             line_entry = {
                 "source": "ensemble",
-                "variable": "precipitation",  # Hardcode if always "precip" for ensemble
+                "variable": ens_var,
                 "member_selection": mem_id,
                 "alt_bin_range": [alt_min, alt_max],
                 "color": color,
@@ -235,7 +235,7 @@ def build_distribution_lines(dist_cfg):
             )
             line_entry = {
                 "source": "reference",
-                "variable": "RR",  # Hardcode if always "RR" for reference
+                "variable": ref_var,  # Hardcode if always "RR" for reference
                 "alt_bin_range": [alt_min, alt_max],
                 "color": color,
                 "label": label
