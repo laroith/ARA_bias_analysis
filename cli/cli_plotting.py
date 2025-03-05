@@ -23,6 +23,7 @@ from scripts.bias_metrics import (
     root_mean_squared_error, mean_absolute_error, mean_error
 )
 from scripts.weather_filter import load_weather_types_csv, filter_by_weather_types
+from scripts.precipitation_filter import apply_wet_filter, apply_precip_range
 from scripts.elevation_manager import (
     load_and_subset_dem,
     add_alt_to_ds,
@@ -112,6 +113,7 @@ def run_analysis(config):
 #    print(f"Ensemble dataset loaded with dimensions: {ds_ensemble.dims}")
 
     var_name = config['input'].get('var_name', 'precipitation')
+    ref_var_name = config['input'].get('ref_var_name', 'RR')
 
     if var_name not in ds_ensemble.data_vars:
         print(f"Warning: '{var_name}' not found in ensemble dataset. "
@@ -211,6 +213,28 @@ def run_analysis(config):
 #    print(ds_ensemble_interp.time.values)
 #    print("Ensemble data after regridding:", ds_ensemble_interp)
 
+
+    # Decide if you want to analyze only datapoints above a certain threshold
+    # e.g. distributions of hourly gridcell rainfall only if there actually was rainfall -> omit the 0's 
+    # If config says "wet_filter.enabled", do the mask:
+    wet_cfg = config.get('wet_filter', {})
+    if wet_cfg.get('enabled', False):
+        threshold = wet_cfg.get('threshold', 0.1)
+        print(f"Wet filter enabled, threshold={threshold}. Masking ensemble data < {threshold}.")
+        ds_ensemble_interp = apply_wet_filter(ds_ensemble_interp, var_name, threshold)
+        ds_ref_prepared = apply_wet_filter(ds_ref_prepared, ref_var_name, threshold)
+        print("Ensemble data after wet_filter:", ds_ensemble_interp)
+
+
+    # (New) Check if precip_category is enabled
+    cat_cfg = config.get('precip_category', {})
+    if cat_cfg.get('enabled', False):
+        cat_min = cat_cfg.get('min_val', 0)
+        cat_max = cat_cfg.get('max_val', 99999)
+        ds_ensemble_interp = apply_precip_range(ds_ensemble_interp, var_name, cat_min, cat_max)
+        ds_ref_prepared    = apply_precip_range(ds_ref_prepared, ref_var_name, cat_min, cat_max)
+        print(f"[Info] Applied precip category '{cat_cfg.get('label')}' in range [{cat_min}, {cat_max})")
+
     # Attach altitude to the datasets
     if ds_dem is not None:
         # if user wants to regrid DEM to reference
@@ -225,11 +249,7 @@ def run_analysis(config):
         ds_ref_prepared = add_alt_to_ds(ds_ref_prepared, ds_dem)
         
         print("Altitude successfully attached to ensemble & reference datasets.")
-#        print("Ensemble data with altitude:", ds_ensemble_interp)
-
-    # Decide the variable name and missing_value from config
-    var_name = config['input'].get('var_name', 'precipitation')
-    missing_value = config['input'].get('missing_value', -999)
+        print("Ensemble data with altitude:", ds_ensemble_interp)
 
     aggregation_method = config['aggregation'].get('period', 'daily')  
     # possible values: "daily", "monthly", "seasonal", "yearly", "none" (or direct)
@@ -237,6 +257,7 @@ def run_analysis(config):
     # Aggregation 
     print(f"Performing {aggregation_method} aggregation on ensemble data...")
 
+    missing_value = config['input'].get('missing_value', -999)
     aggregated_ens = None
 
     if aggregation_method == 'none' or aggregation_method == 'hourly':
