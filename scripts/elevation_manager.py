@@ -84,6 +84,11 @@ def add_alt_to_ds(ds, dem_ds):
     ds_with_alt : xarray.Dataset
         Dataset with 'altitude' variable on the matching grid.
     """
+        # If it's stored as a coordinate, you can do:
+    if "lambert_conformal_conic" in ds.coords:
+        ds = ds.reset_coords("lambert_conformal_conic", drop=True)
+    if "lambert_conformal_conic" in dem_ds.coords:
+        dem_ds = dem_ds.reset_coords("lambert_conformal_conic", drop=True)
     # Attach the altitude from dem_ds
     ds["altitude"] = dem_ds["altitude"]
     

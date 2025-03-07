@@ -2,15 +2,15 @@
 
 input:
   # Pattern to find your ensemble member files
-  ensemble_pattern: "/home/lar/ARA/bias_analysis/data/air_temperature_2m_2016100*.nc"  # "/home/lar/ARA/bias_analysis/data/total_precipitation_2017100*.nc"
+  ensemble_pattern: "/data/reloclim/normal/ARA/data/total_precipitation_201606*.nc"  # "/home/lar/ARA/bias_analysis/data/total_precipitation_2017100*.nc"
   
   # Single reference dataset (change path as needed)
-  reference_file: "/home/lar/ARA/bias_analysis/data/INCAL_HOURLY_T2M_201610.nc"
+  reference_file: "/data/reloclim/normal/ZAMG_INCA/data_on_backup/original/INCA_RR_2016*.nc"
   
   # Variable names for ensemble & reference
   # (These should match your test NetCDF files)
-  var_name: "air_temperature" #"precipitation"
-  ref_var_name: "T2M" #"RR"
+  var_name: "precipitation"
+  ref_var_name: "RR"
   
   # Names for the latitude/longitude in the ensemble dataset
   lat_name: "latitude"
@@ -26,15 +26,15 @@ input:
 subset:
   # Geographic subsetting
   lat_bounds: [45, 48]
-  lon_bounds: [11, 13]
+  lon_bounds: [11, 15]
   
   # Time subsetting (change to match your test data coverage)
-  start_time: "2016-10-07T00:00:00"
-  end_time: "2016-10-09T00:00:00"
+  start_time: "2016-06-01T00:00:00"
+  end_time: "2016-06-30T00:00:00"
 
 wet_filter:
   # use only gridcells and timestamps with precipiation over a threshold
-  enabled: false
+  enabled: true
   threshold: 0.1
   mask_as_zero: false # set true if we want to aggregate a sum later
 
@@ -61,7 +61,7 @@ weather_types:
 
 aggregation:
   # Default is daily aggregation; can be overridden via CLI
-  period: "none"       # or "daily", "monthly", "seasonal"
+  period: "daily"       # or "daily", "monthly", "seasonal"
 
 bias:
   # Default is just RMSE (user can override via CLI for MAE, ME, etc.)
@@ -103,7 +103,7 @@ plot:
 
   time_series:
     enabled: true
-    out_file: "output/time_series_altbins.png"
+    out_file: "output/time_series_2016.png"
     alt_bin_ranges:
       - [0, 500]
       - [500, 1000]
@@ -114,10 +114,10 @@ plot:
 
   cycle:
     enabled: true
-    out_file: "output/cycle_altbin.png"
-    cycle_type: "diurnal"           # "diurnal", "daily", "monthly", "seasonal", "annual"
+    out_file: "output/cycle_2016.png"
+    cycle_type: "monthly"           # "diurnal", "daily", "monthly", "seasonal", "annual"
     title: "Monthly Cycle by Alt Bins"
-    ylabel: "K" #"mm"
+    ylabel: "mm"
     
     alt_bin_ranges:
       - [0, 500]
@@ -134,10 +134,10 @@ plot:
     enabled: true
     kind: "kde"               # or "kde"
     bins: 30                   # only relevant for "hist"
-    out_file: "output/dist_altbins.png"
+    out_file: "output/dist_2016.png"
     title: "Distribution by Altitude Bins"
-    xlabel: "K" #"mm/h"
-    ylabel: "Count"
+    xlabel: "mm/d"
+    ylabel: "Prob"
     
     # More abstract approach:
     alt_bin_ranges:
@@ -156,7 +156,7 @@ plot:
     # Example: If you had 'member' dimension in your ensemble, 
     # and wanted to plot metric side by side.
     metric: "MAE"
-    out_file: "output/mae_by_member.png"
+    out_file: "output/mae_2016.png"
     title: "MAE by Ensemble Member"
     ncols: 2
     cmap: "Blues"
@@ -164,7 +164,7 @@ plot:
   altitude_bin_subplots:
     enabled: true
     metric: "MAE"
-    out_file: "output/MAE_by_altbin.png"
+    out_file: "output/MAE_2016_altbin.png"
     title: "MAE by Altitude Bin"
     ncols: 3       # how many columns in the subplot grid
     cmap: "viridis"
